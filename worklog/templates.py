@@ -28,9 +28,6 @@ project: {project}
 
 # {project} - {d.strftime("%A, %B %d, %Y")}
 
-## Context / Where I left off:
-
-
 ## Notes:
 
 
