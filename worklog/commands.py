@@ -82,16 +82,16 @@ def meeting_log(args: list[str]):
 def list_logs(args: list[str]):
     """List recent logs with optional filtering."""
     logs = parser.parse_all_logs()
-    
+
     if not logs:
         print("No logs found.")
         return
-    
+
     filter_project = None
     filter_contact = None
     filter_type = None
     limit = 20
-    
+
     i = 0
     while i < len(args):
         if args[i] in ("-p", "--project") and i + 1 < len(args):
@@ -108,28 +108,35 @@ def list_logs(args: list[str]):
             i += 2
         else:
             i += 1
-    
+
     if filter_project:
         logs = [log for log in logs if log.matches_project(filter_project)]
     if filter_contact:
         logs = [log for log in logs if log.matches_contact(filter_contact)]
     if filter_type:
         logs = [log for log in logs if log.log_type == filter_type]
-    
-    print(f"\n{'Date':<12} {'Type':<10} {'Project':<20} {'Details':<30}")
-    print("-" * 75)
-    
-    for log in logs[:limit]:
+
+    print(f"\n{'#':<4} {'Date':<12} {'Type':<10} {'Project':<20} {'Details':<30}")
+    print("-" * 79)
+
+    displayed_logs = logs[:limit]
+    for i, log in enumerate(displayed_logs, 1):
         details = ""
         if log.contacts:
             details = ", ".join(log.contacts[:2])
             if len(log.contacts) > 2:
                 details += f" +{len(log.contacts) - 2}"
-        
-        print(f"{log.date:<12} {log.log_type:<10} {log.project[:20]:<20} {details[:30]:<30}")
-    
+
+        print(f"{i:<4} {log.date:<12} {log.log_type:<10} {log.project[:20]:<20} {details[:30]:<30}")
+
     if len(logs) > limit:
         print(f"\n... and {len(logs) - limit} more. Use -n to show more.")
+
+    choice = input("\nEnter number to open, or press Enter to exit: ").strip()
+    if choice.isdigit():
+        idx = int(choice) - 1
+        if 0 <= idx < len(displayed_logs):
+            ui.open_in_editor(displayed_logs[idx].filepath)
 
 
 def search_logs(args: list[str]):
