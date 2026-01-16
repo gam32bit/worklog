@@ -55,19 +55,18 @@ contacts: [{contacts_str}]
     yaml += "---\n\n"
     
     body = f"""# {display_title}
+
+## Agenda
+-
+
+## Notes
+
+
+## Action Items
+- [ ]
+
+---
+Attendees: {contacts_str}
 Date: {d.strftime("%A, %B %d, %Y")}
-
-## Attendees:
-{chr(10).join(f"- {c}" for c in contacts) if contacts else "- "}
-
-## Agenda:
-- 
-
-## Notes:
-
-
-## Action items:
-- [ ] 
-
 """
     return yaml + body
