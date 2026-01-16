@@ -5,6 +5,7 @@ Extracts YAML frontmatter and content.
 
 from pathlib import Path
 from dataclasses import dataclass, field
+from datetime import datetime
 
 
 @dataclass
@@ -17,7 +18,18 @@ class ParsedLog:
     @property
     def date(self) -> str:
         return self.frontmatter.get("date", "")
-    
+
+    @property
+    def date_obj(self):
+        """Parse date string and return datetime.date object, or None if invalid."""
+        date_str = self.date
+        if not date_str:
+            return None
+        try:
+            return datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return None
+
     @property
     def log_type(self) -> str:
         return self.frontmatter.get("type", "log")
@@ -33,7 +45,23 @@ class ParsedLog:
             c = c.strip("[]")
             return [x.strip() for x in c.split(",") if x.strip()]
         return c if c else []
-    
+
+    def excerpt(self, max_length: int = 50) -> str:
+        """Get the first meaningful line of content for display."""
+        if not self.content:
+            return ""
+
+        for line in self.content.splitlines():
+            line = line.strip()
+            # Skip empty lines and markdown headers
+            if line and not line.startswith("#"):
+                # Truncate if longer than max_length
+                if len(line) > max_length:
+                    return line[:max_length - 3] + "..."
+                return line
+
+        return ""
+
     def matches_project(self, project: str) -> bool:
         return self.project.lower() == project.lower()
     
