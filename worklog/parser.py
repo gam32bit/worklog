@@ -46,6 +46,19 @@ class ParsedLog:
             return [x.strip() for x in c.split(",") if x.strip()]
         return c if c else []
 
+    @property
+    def title(self) -> str:
+        """Extract title from the first heading in content."""
+        if not self.content:
+            return ""
+
+        for line in self.content.splitlines():
+            line = line.strip()
+            if line.startswith("# "):
+                return line[2:].strip()
+
+        return ""
+
     def excerpt(self, max_length: int = 50) -> str:
         """Get the first meaningful line of content for display."""
         if not self.content:

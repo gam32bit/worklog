@@ -149,8 +149,9 @@ def list_logs(args: list[str]):
                 displayed_logs.append(log)
                 idx = len(displayed_logs)
                 project_display = log.project if log.project else "(none)"
-                excerpt = log.excerpt(40)
-                print(f"  {idx}. [{log.log_type}] {project_display:<20} {excerpt}")
+                # For meetings, display title; for others, display excerpt
+                display_text = log.title if log.log_type == "meeting" else log.excerpt(100)
+                print(f"  {idx}. [{log.log_type}] {project_display:<20} {display_text}")
 
             print()  # Blank line between dates
 
@@ -161,9 +162,10 @@ def list_logs(args: list[str]):
 
         displayed_logs = logs[:limit]
         for i, log in enumerate(displayed_logs, 1):
-            excerpt = log.excerpt(30)
+            # For meetings, display title; for others, display excerpt
+            display_text = log.title if log.log_type == "meeting" else log.excerpt(100)
 
-            print(f"{i:<4} {log.date:<12} {log.log_type:<10} {log.project[:20]:<20} {excerpt:<30}")
+            print(f"{i:<4} {log.date:<12} {log.log_type:<10} {log.project[:20]:<20} {display_text:<30}")
 
         if len(logs) > limit:
             print(f"\n... and {len(logs) - limit} more. Use -n to show more.")
