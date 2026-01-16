@@ -2,7 +2,8 @@
 Command implementations for work log.
 """
 
-from datetime import date
+from datetime import date, timedelta
+from collections import defaultdict
 from . import config, templates, ui, io as log_io, parser
 
 
@@ -91,6 +92,7 @@ def list_logs(args: list[str]):
     filter_contact = None
     filter_type = None
     limit = 20
+    show_week = False
 
     i = 0
     while i < len(args):
@@ -106,6 +108,9 @@ def list_logs(args: list[str]):
         elif args[i] in ("-n", "--limit") and i + 1 < len(args):
             limit = int(args[i + 1])
             i += 2
+        elif args[i] in ("-w", "--week"):
+            show_week = True
+            i += 1
         else:
             i += 1
 
@@ -116,23 +121,54 @@ def list_logs(args: list[str]):
     if filter_type:
         logs = [log for log in logs if log.log_type == filter_type]
 
-    print(f"\n{'#':<4} {'Date':<12} {'Type':<10} {'Project':<20} {'Details':<30}")
-    print("-" * 79)
+    # Filter by week if requested
+    if show_week:
+        today = date.today()
+        week_ago = today - timedelta(days=7)
+        logs = [log for log in logs if log.date_obj and log.date_obj >= week_ago]
 
-    displayed_logs = logs[:limit]
-    for i, log in enumerate(displayed_logs, 1):
-        details = ""
-        if log.contacts:
-            details = ", ".join(log.contacts[:2])
-            if len(log.contacts) > 2:
-                details += f" +{len(log.contacts) - 2}"
+    if show_week:
+        # Group logs by date
+        logs_by_date = defaultdict(list)
+        for log in logs:
+            if log.date_obj:
+                logs_by_date[log.date_obj].append(log)
 
-        print(f"{i:<4} {log.date:<12} {log.log_type:<10} {log.project[:20]:<20} {details[:30]:<30}")
+        # Sort dates in reverse order (most recent first)
+        sorted_dates = sorted(logs_by_date.keys(), reverse=True)
 
-    if len(logs) > limit:
-        print(f"\n... and {len(logs) - limit} more. Use -n to show more.")
+        # Build a flat list for numbering
+        displayed_logs = []
+        print()
+        for log_date in sorted_dates:
+            date_logs = logs_by_date[log_date]
+            # Display date header
+            print(f"=== {log_date.strftime('%A, %B %d, %Y')} ===")
 
-    choice = input("\nEnter number to open, or press Enter to exit: ").strip()
+            for log in date_logs:
+                displayed_logs.append(log)
+                idx = len(displayed_logs)
+                project_display = log.project if log.project else "(none)"
+                excerpt = log.excerpt(40)
+                print(f"  {idx}. [{log.log_type}] {project_display:<20} {excerpt}")
+
+            print()  # Blank line between dates
+
+    else:
+        # Standard table view
+        print(f"\n{'#':<4} {'Date':<12} {'Type':<10} {'Project':<20} {'Excerpt':<30}")
+        print("-" * 79)
+
+        displayed_logs = logs[:limit]
+        for i, log in enumerate(displayed_logs, 1):
+            excerpt = log.excerpt(30)
+
+            print(f"{i:<4} {log.date:<12} {log.log_type:<10} {log.project[:20]:<20} {excerpt:<30}")
+
+        if len(logs) > limit:
+            print(f"\n... and {len(logs) - limit} more. Use -n to show more.")
+
+    choice = input("Enter number to open, or press Enter to exit: ").strip()
     if choice.isdigit():
         idx = int(choice) - 1
         if 0 <= idx < len(displayed_logs):
