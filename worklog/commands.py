@@ -149,9 +149,14 @@ def list_logs(args: list[str]):
                 displayed_logs.append(log)
                 idx = len(displayed_logs)
                 project_display = log.project if log.project else "(none)"
-                # For meetings, display title; for others, display excerpt
-                display_text = log.title if log.log_type == "meeting" else log.excerpt(100)
-                print(f"  {idx}. [{log.log_type}] {project_display:<20} {display_text}")
+                # For meetings, show title before tag, then excerpt
+                if log.log_type == "meeting":
+                    title_prefix = f"{log.title} " if log.title else ""
+                    excerpt_text = log.excerpt(100)
+                    print(f"  {idx}. {title_prefix}[{log.log_type}] {project_display:<20} {excerpt_text}")
+                else:
+                    excerpt_text = log.excerpt(100)
+                    print(f"  {idx}. [{log.log_type}] {project_display:<20} {excerpt_text}")
 
             print()  # Blank line between dates
 
@@ -162,8 +167,11 @@ def list_logs(args: list[str]):
 
         displayed_logs = logs[:limit]
         for i, log in enumerate(displayed_logs, 1):
-            # For meetings, display title; for others, display excerpt
-            display_text = log.title if log.log_type == "meeting" else log.excerpt(100)
+            # For meetings, show title with excerpt; for others, just excerpt
+            if log.log_type == "meeting" and log.title:
+                display_text = f"{log.title}: {log.excerpt(100)}"
+            else:
+                display_text = log.excerpt(100)
 
             print(f"{i:<4} {log.date:<12} {log.log_type:<10} {log.project[:20]:<20} {display_text:<30}")
 
