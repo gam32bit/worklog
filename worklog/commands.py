@@ -24,18 +24,18 @@ def quick_log(args: list[str]):
 def project_log(args: list[str]):
     """Create a log tagged with a project."""
     today = date.today()
-    
+
     if args:
         project = " ".join(args)
     else:
-        projects = config.get_projects()
-        project = ui.select_from_list(projects, "Select project:", allow_new=True)
-    
+        recent_projects = parser.get_recent_projects(5)
+        project = ui.select_from_recent(recent_projects, "Select project:", allow_new=True)
+
     if not project:
         print("No project selected. Creating quick log instead.")
         quick_log([])
         return
-    
+
     config.add_project(project)
     
     slug = project.lower().replace(" ", "-")[:20]
@@ -54,12 +54,17 @@ def meeting_log(args: list[str]):
     date_input = input("Date (Enter for today, or type date/day): ").strip()
     meeting_date = config.parse_date_input(date_input)
     print(f"Meeting date: {meeting_date.strftime('%A, %B %d, %Y')}")
-    
-    contacts = ui.select_multiple_contacts("Who's in this meeting?")
-    
-    projects = config.get_projects()
-    project = ui.select_from_list(projects, "Related project (optional):", allow_new=True)
-    
+
+    recent_contacts = parser.get_recent_contacts(5)
+    contacts = ui.select_multiple_from_recent(recent_contacts, "Who's in this meeting?")
+
+    # Save any new contacts
+    for contact in contacts:
+        config.add_contact(contact)
+
+    recent_projects = parser.get_recent_projects(5)
+    project = ui.select_from_recent(recent_projects, "Related project (optional):", allow_new=True)
+
     if project:
         config.add_project(project)
     
@@ -88,10 +93,13 @@ def list_logs(args: list[str]):
         print("No logs found.")
         return
 
+    # Sort by date (most recent first)
+    logs.sort(key=lambda log: log.date_obj or date.min, reverse=True)
+
     filter_project = None
     filter_contact = None
     filter_type = None
-    limit = 20
+    limit = 10
     show_week = False
 
     i = 0
@@ -204,17 +212,21 @@ def search_logs(args: list[str]):
         return
     
     print(f"\nFound {len(matches)} log(s) matching '{query}':\n")
-    
+
     for i, log in enumerate(matches[:20], 1):
-        print(f"{i}. [{log.date}] {log.log_type}: {log.project or '(no project)'}")
-        print(f"   {log.filepath}")
-        
+        # For meetings, show title instead of project
+        if log.log_type == "meeting":
+            display_label = log.title if log.title else "Meeting"
+        else:
+            display_label = log.project or "(no project)"
+        print(f"{i}. [{log.date}] {log.log_type}: {display_label}")
+
         content_lower = log.content.lower()
         query_lower = query.lower()
         if query_lower in content_lower:
             idx = content_lower.find(query_lower)
-            start = max(0, idx - 30)
-            end = min(len(log.content), idx + len(query) + 30)
+            start = max(0, idx - 60)
+            end = min(len(log.content), idx + len(query) + 60)
             snippet = log.content[start:end].replace("\n", " ")
             if start > 0:
                 snippet = "..." + snippet

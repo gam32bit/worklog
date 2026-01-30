@@ -6,7 +6,7 @@ Usage:
     log.py              # Interactive menu
     log.py log          # Quick log (no project/meeting)
     log.py project      # Log with project tag
-    log.py meeting      # Meeting notes
+    log.py meeting      # Meeting log
     log.py list         # List recent logs
     log.py search       # Search logs
 """
@@ -52,7 +52,7 @@ def run_interactive_menu():
     print("\n=== Work Log ===")
     print("1. Quick log (no tags)")
     print("2. Project log")
-    print("3. Meeting notes")
+    print("3. Meeting log")
     print("4. List recent")
     print("5. Search")
     print("0. Exit")

@@ -128,11 +128,44 @@ def parse_file(filepath: Path) -> ParsedLog | None:
 def parse_all_logs() -> list[ParsedLog]:
     """Parse all log files."""
     from . import io as log_io
-    
+
     logs = []
     for filepath in log_io.find_all_logs():
         parsed = parse_file(filepath)
         if parsed:
             logs.append(parsed)
-    
+
     return logs
+
+
+def get_recent_projects(limit: int = 5) -> list[str]:
+    """Get projects from most recent logs, ordered by recency."""
+    logs = parse_all_logs()
+    seen = set()
+    recent_projects = []
+
+    for log in logs:
+        if log.project and log.project not in seen:
+            seen.add(log.project)
+            recent_projects.append(log.project)
+            if len(recent_projects) >= limit:
+                break
+
+    return recent_projects
+
+
+def get_recent_contacts(limit: int = 5) -> list[str]:
+    """Get contacts from most recent logs, ordered by recency."""
+    logs = parse_all_logs()
+    seen = set()
+    recent_contacts = []
+
+    for log in logs:
+        for contact in log.contacts:
+            if contact and contact not in seen:
+                seen.add(contact)
+                recent_contacts.append(contact)
+                if len(recent_contacts) >= limit:
+                    return recent_contacts
+
+    return recent_contacts
