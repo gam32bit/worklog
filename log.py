@@ -9,6 +9,7 @@ Usage:
     log.py meeting      # Meeting log
     log.py list         # List recent logs
     log.py search       # Search logs
+    log.py summary      # Weekly/monthly summary
 """
 
 import sys
@@ -35,6 +36,7 @@ def main():
         "meeting": commands.meeting_log,
         "list": commands.list_logs,
         "search": commands.search_logs,
+        "summary": commands.summary_logs,
         "projects": commands.list_projects,
         "contacts": commands.list_contacts,
     }
@@ -55,10 +57,11 @@ def run_interactive_menu():
     print("3. Meeting log")
     print("4. List recent")
     print("5. Search")
+    print("6. Summary")
     print("0. Exit")
     print()
 
-    choice = input("Select (0-5): ").strip()
+    choice = input("Select (0-6): ").strip()
 
     if choice == "0":
         return
@@ -72,6 +75,8 @@ def run_interactive_menu():
         commands.list_logs([])
     elif choice == "5":
         commands.search_logs([])
+    elif choice == "6":
+        commands.summary_logs([])
     else:
         print("Invalid choice.")
 

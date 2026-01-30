@@ -44,6 +44,7 @@ This presents options to:
 3. Create meeting notes
 4. List recent logs
 5. Search logs
+6. View summary
 
 ### Direct Commands
 
@@ -55,6 +56,7 @@ Run specific commands directly:
 ./log.py meeting      # Meeting notes
 ./log.py list         # List recent logs
 ./log.py search       # Search logs
+./log.py summary      # Weekly/monthly summary
 ./log.py projects     # List all projects
 ./log.py contacts     # List all contacts
 ```
@@ -88,6 +90,19 @@ Run specific commands directly:
 **Limit results:**
 ```bash
 ./log.py list -n 10
+```
+
+**View weekly summary (default):**
+```bash
+./log.py summary
+./log.py summary --week
+```
+
+**View monthly summary:**
+```bash
+./log.py summary --month           # Current month
+./log.py summary --month 12        # Specific month (current year)
+./log.py summary --month 2025-12   # Specific month and year
 ```
 
 ## File Structure

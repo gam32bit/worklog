@@ -88,6 +88,8 @@ def parse_date_input(text: str) -> date:
         target_weekday = days.index(text)
         current_weekday = today.weekday()
         days_ahead = (target_weekday - current_weekday) % 7
+        if days_ahead == 0:
+            days_ahead = 7  # If today is Monday and they type "monday", give next Monday
         return today + timedelta(days=days_ahead)
     
     # Try parsing as date

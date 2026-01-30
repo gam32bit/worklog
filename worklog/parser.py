@@ -5,7 +5,8 @@ Extracts YAML frontmatter and content.
 
 from pathlib import Path
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, date
+import re
 
 
 @dataclass
@@ -93,6 +94,25 @@ class ParsedLog:
                 return True
         return False
 
+    def extract_action_items(self) -> list[dict]:
+        """Extract action items from content.
+
+        Returns list of dicts with keys:
+        - text: the action item text
+        - complete: bool indicating if checked
+        """
+        items = []
+        # Match - [ ] or - [x] (case insensitive for x)
+        pattern = re.compile(r'^[\s]*-\s*\[([ xX])\]\s*(.+)$', re.MULTILINE)
+        for match in pattern.finditer(self.content):
+            check_char = match.group(1)
+            text = match.group(2).strip()
+            items.append({
+                'text': text,
+                'complete': check_char.lower() == 'x'
+            })
+        return items
+
 
 def parse_file(filepath: Path) -> ParsedLog | None:
     """Parse a log file, extracting frontmatter and content."""
@@ -126,7 +146,7 @@ def parse_file(filepath: Path) -> ParsedLog | None:
 
 
 def parse_all_logs() -> list[ParsedLog]:
-    """Parse all log files."""
+    """Parse all log files, sorted by date (most recent first)."""
     from . import io as log_io
 
     logs = []
@@ -135,6 +155,8 @@ def parse_all_logs() -> list[ParsedLog]:
         if parsed:
             logs.append(parsed)
 
+    # Sort by date, most recent first
+    logs.sort(key=lambda log: log.date_obj or date.min, reverse=True)
     return logs
 
 

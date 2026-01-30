@@ -93,14 +93,12 @@ def list_logs(args: list[str]):
         print("No logs found.")
         return
 
-    # Sort by date (most recent first)
-    logs.sort(key=lambda log: log.date_obj or date.min, reverse=True)
-
     filter_project = None
     filter_contact = None
     filter_type = None
     limit = 10
-    show_week = False
+    filter_week = False
+    group_by_date = False
 
     i = 0
     while i < len(args):
@@ -117,7 +115,8 @@ def list_logs(args: list[str]):
             limit = int(args[i + 1])
             i += 2
         elif args[i] in ("-w", "--week"):
-            show_week = True
+            filter_week = True
+            group_by_date = True
             i += 1
         else:
             i += 1
@@ -129,13 +128,13 @@ def list_logs(args: list[str]):
     if filter_type:
         logs = [log for log in logs if log.log_type == filter_type]
 
-    # Filter by week if requested
-    if show_week:
+    # Filter by week if requested (applies to both display modes)
+    if filter_week:
         today = date.today()
         week_ago = today - timedelta(days=7)
         logs = [log for log in logs if log.date_obj and log.date_obj >= week_ago]
 
-    if show_week:
+    if group_by_date:
         # Group logs by date
         logs_by_date = defaultdict(list)
         for log in logs:
@@ -258,11 +257,139 @@ def list_projects(args: list[str]):
 def list_contacts(args: list[str]):
     """List all known contacts."""
     contacts = config.get_contacts()
-    
+
     if not contacts:
         print("No contacts yet. Create a meeting to add one.")
         return
-    
+
     print("\nContacts:")
     for c in sorted(contacts):
         print(f"  - {c}")
+
+
+def summary_logs(args: list[str]):
+    """Generate a summary of logged activity for a time period."""
+    logs = parser.parse_all_logs()
+
+    if not logs:
+        print("No logs found.")
+        return
+
+    today = date.today()
+    mode = "week"  # default
+    month_value = None
+
+    # Parse arguments
+    i = 0
+    while i < len(args):
+        if args[i] in ("--week", "-w"):
+            mode = "week"
+            i += 1
+        elif args[i] in ("--month", "-m"):
+            mode = "month"
+            # Check if there's a month value following
+            if i + 1 < len(args) and not args[i + 1].startswith("-"):
+                month_value = args[i + 1]
+                i += 2
+            else:
+                i += 1
+        else:
+            i += 1
+
+    # Determine date range
+    if mode == "week":
+        # Start of current week (Monday)
+        week_start = today - timedelta(days=today.weekday())
+        week_end = week_start + timedelta(days=6)
+        start_date = week_start
+        end_date = week_end
+        header = f"=== Week of {week_start.strftime('%B %d, %Y')} ==="
+    else:
+        # Month mode
+        if month_value:
+            # Parse month value: could be "12" or "2025-12"
+            if "-" in month_value:
+                parts = month_value.split("-")
+                year = int(parts[0])
+                month = int(parts[1])
+            else:
+                year = today.year
+                month = int(month_value)
+        else:
+            year = today.year
+            month = today.month
+
+        start_date = date(year, month, 1)
+        # End of month
+        if month == 12:
+            end_date = date(year + 1, 1, 1) - timedelta(days=1)
+        else:
+            end_date = date(year, month + 1, 1) - timedelta(days=1)
+        header = f"=== {start_date.strftime('%B %Y')} ==="
+
+    # Filter logs to date range
+    filtered_logs = [
+        log for log in logs
+        if log.date_obj and start_date <= log.date_obj <= end_date
+    ]
+
+    if not filtered_logs:
+        print(header)
+        print("\nNo logs found for this period.")
+        return
+
+    # Collect stats
+    projects = set()
+    contacts = set()
+    action_items_by_log = []  # List of (log, items)
+
+    for log in filtered_logs:
+        if log.project:
+            projects.add(log.project)
+        for contact in log.contacts:
+            contacts.add(contact)
+
+        # Extract action items from meeting logs
+        if log.log_type == "meeting":
+            items = log.extract_action_items()
+            if items:
+                action_items_by_log.append((log, items))
+
+    # Count action items
+    total_incomplete = 0
+    total_complete = 0
+    for _, items in action_items_by_log:
+        for item in items:
+            if item['complete']:
+                total_complete += 1
+            else:
+                total_incomplete += 1
+
+    # Print summary
+    print()
+    print(header)
+    print()
+    print(f"Logs: {len(filtered_logs)} entries")
+    if projects:
+        print(f"Projects: {', '.join(sorted(projects))}")
+    if contacts:
+        print(f"People: {', '.join(sorted(contacts))}")
+
+    if action_items_by_log:
+        print("\nAction Items:")
+        for log, items in action_items_by_log:
+            # Generate description for the log
+            if log.title:
+                log_desc = log.title
+            elif log.contacts:
+                log_desc = f"Meeting with {', '.join(log.contacts)}"
+            else:
+                log_desc = "Meeting"
+            print(f"  From: {log_desc} ({log.date})")
+            for item in items:
+                check = "x" if item['complete'] else " "
+                print(f"    - [{check}] {item['text']}")
+            print()
+
+        print(f"Outstanding: {total_incomplete} incomplete, {total_complete} complete")
+    print()
