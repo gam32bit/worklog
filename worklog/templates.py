@@ -10,6 +10,8 @@ def quick_log_template(d: date) -> str:
     return f"""---
 date: {d}
 type: log
+project:
+contacts: []
 ---
 
 # Log - {d.strftime("%A, %B %d, %Y")}
@@ -24,6 +26,7 @@ def project_log_template(d: date, project: str) -> str:
 date: {d}
 type: project
 project: {project}
+contacts: []
 ---
 
 # {project} - {d.strftime("%A, %B %d, %Y")}
@@ -48,11 +51,11 @@ def meeting_template(d: date, contacts: list[str], project: str = None, title: s
     yaml = f"""---
 date: {d}
 type: meeting
+project: {project if project else ""}
 contacts: [{contacts_str}]
+---
+
 """
-    if project:
-        yaml += f"project: {project}\n"
-    yaml += "---\n\n"
     
     body = f"""# {display_title}
 
