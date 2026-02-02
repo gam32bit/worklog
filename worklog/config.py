@@ -12,59 +12,18 @@ LOG_DIR = Path.home() / "work-logs"
 # Editor
 EDITOR = os.environ.get("EDITOR", "vim")
 
-# Projects file - simple text file, one project per line
-PROJECTS_FILE = LOG_DIR / ".projects"
 
-# Contacts file - simple text file, one contact per line (FirstName LastInitial)
-CONTACTS_FILE = LOG_DIR / ".contacts"
-
-
-def log_path(d: date, prefix: str = "log", suffix: str = "") -> Path:
+def log_path(d: date) -> Path:
     """
-    Build path: LOG_DIR/YYYY/MM/{prefix}-YYYY-MM-DD[-suffix].md
+    Build path: LOG_DIR/YYYY/MM/log-YYYY-MM-DD.md
     """
-    filename = f"{prefix}-{d}"
-    if suffix:
-        filename += f"-{suffix}"
-    filename += ".md"
+    filename = f"log-{d}.md"
     return LOG_DIR / f"{d.year}" / f"{d.month:02d}" / filename
 
 
 def ensure_dir(filepath: Path) -> None:
     """Create parent directories if needed."""
     filepath.parent.mkdir(parents=True, exist_ok=True)
-
-
-def get_projects() -> list[str]:
-    """Load project list from file."""
-    if not PROJECTS_FILE.exists():
-        return []
-    return [line.strip() for line in PROJECTS_FILE.read_text().splitlines() if line.strip()]
-
-
-def add_project(name: str) -> None:
-    """Add a new project to the list."""
-    projects = get_projects()
-    if name not in projects:
-        ensure_dir(PROJECTS_FILE)
-        with open(PROJECTS_FILE, "a") as f:
-            f.write(f"{name}\n")
-
-
-def get_contacts() -> list[str]:
-    """Load contact list from file."""
-    if not CONTACTS_FILE.exists():
-        return []
-    return [line.strip() for line in CONTACTS_FILE.read_text().splitlines() if line.strip()]
-
-
-def add_contact(name: str) -> None:
-    """Add a new contact to the list."""
-    contacts = get_contacts()
-    if name not in contacts:
-        ensure_dir(CONTACTS_FILE)
-        with open(CONTACTS_FILE, "a") as f:
-            f.write(f"{name}\n")
 
 
 def parse_date_input(text: str) -> date:
@@ -74,14 +33,14 @@ def parse_date_input(text: str) -> date:
     """
     text = text.lower().strip()
     today = date.today()
-    
+
     if text in ("", "today"):
         return today
     if text == "tomorrow":
         return today + timedelta(days=1)
     if text == "yesterday":
         return today - timedelta(days=1)
-    
+
     # Day of week
     days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
     if text in days:
@@ -89,7 +48,7 @@ def parse_date_input(text: str) -> date:
         current_weekday = today.weekday()
         days_ahead = (target_weekday - current_weekday) % 7
         return today + timedelta(days=days_ahead)
-    
+
     # Try parsing as date
     try:
         if len(text) == 10 and text[4] == "-":
@@ -104,6 +63,30 @@ def parse_date_input(text: str) -> date:
             return date(today.year, today.month, day)
     except ValueError:
         pass
-    
+
     print(f"Couldn't parse '{text}', using today.")
     return today
+
+
+def get_week_range(week_offset: int = 0) -> tuple[date, date]:
+    """
+    Get start (Monday) and end (Sunday) of a week.
+    week_offset=0 is current week, week_offset=-1 is last week.
+    """
+    today = date.today()
+    # Find Monday of current week
+    monday = today - timedelta(days=today.weekday())
+    # Apply offset
+    monday = monday + timedelta(weeks=week_offset)
+    sunday = monday + timedelta(days=6)
+    return monday, sunday
+
+
+def is_this_week(d: date) -> bool:
+    monday, sunday = get_week_range(0)
+    return monday <= d <= sunday
+
+
+def is_last_week(d: date) -> bool:
+    monday, sunday = get_week_range(-1)
+    return monday <= d <= sunday

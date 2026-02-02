@@ -1,6 +1,6 @@
 # Work Log
 
-A simple, flexible CLI tool for logging work activities, project updates, and meeting notes.
+A simple, flexible CLI tool for logging work activities with action item tracking.
 
 ## Overview
 
@@ -8,12 +8,13 @@ Work Log is a command-line tool that helps you keep organized records of your da
 
 ## Features
 
-- **Multiple log types**: Quick logs, project logs, and meeting notes
+- **Unified log creation**: Single workflow for all types of logs
 - **Smart organization**: Logs automatically organized by year and month (`~/work-logs/YYYY/MM/`)
 - **YAML frontmatter**: Structured metadata for easy filtering and searching
-- **Auto-completion**: Projects and contacts are saved and available for quick selection
-- **Flexible filtering**: Filter logs by project (`-p`) or contact (`-c`)
-- **Interactive or direct**: Use the interactive menu or run commands directly
+- **Recent items**: Projects and contacts derived from recent logs for quick selection
+- **Flexible filtering**: Filter logs by project, contact, or time period
+- **Action item tracking**: Extract and list action items across logs
+- **Taskwarrior integration**: Raw output mode for piping to task managers
 - **Editor integration**: Opens logs in your preferred editor (set via `$EDITOR`)
 
 ## Installation
@@ -30,65 +31,86 @@ Work Log is a command-line tool that helps you keep organized records of your da
 
 ## Usage
 
-### Interactive Menu
+### Create a New Log
 
-Run without arguments to open the interactive menu:
-
-```bash
-./log.py
-```
-
-This presents options to:
-1. Create a quick log
-2. Create a project log
-3. Create meeting notes
-4. List recent logs
-5. Search logs
-
-### Direct Commands
-
-Run specific commands directly:
+Run without arguments to create a new log:
 
 ```bash
-./log.py log          # Quick log (no project/meeting)
-./log.py project      # Log with project tag
-./log.py meeting      # Meeting notes
-./log.py list         # List recent logs
-./log.py search       # Search logs
-./log.py projects     # List all projects
-./log.py contacts     # List all contacts
+log
 ```
 
-### Command Examples
+This prompts for:
+1. **Date** - Enter for today, or type a date/day name
+2. **Project** - Select from recent projects or type a new one
+3. **Contacts** - Select from recent contacts or type new ones (comma-separated)
 
-**Create a project log:**
+Then opens the log in your editor.
+
+### List Logs
+
 ```bash
-./log.py project
-# or specify project directly
-./log.py project "API Refactoring"
+log list recent             # Last 10 logs (default)
+log list thisweek           # This week's logs (Monday through today)
+log list lastweek           # Last week's logs (Monday to Sunday)
+log list project:<name>     # Filter by project (case-insensitive partial match)
+log list contact:<name>     # Filter by contact (case-insensitive partial match)
 ```
 
-**List logs filtered by project:**
+Filters can be combined:
+
 ```bash
-./log.py list -p "API Refactoring"
+log list thisweek project:api-refactor
+log list lastweek contact:sarah
 ```
 
-**List logs filtered by contact:**
-```bash
-./log.py list -c "John D"
+Output format:
+```
+1. 2026-02-02 | vims-website | First line of content here...
+2. 2026-02-01 | content-cleanup | Another log excerpt...
+3. 2026-01-31 | (none) | Log without project...
+
+Enter number to open, or press Enter to exit:
 ```
 
-**Search logs:**
+### Search Logs
+
 ```bash
-./log.py search "bug fix"
-# or search interactively
-./log.py search
+log search <query>          # Search log content
+log search "api endpoint"   # Multi-word search
+log search                  # Prompts for query
 ```
 
-**Limit results:**
+### Action Items
+
 ```bash
-./log.py list -n 10
+log actions                 # Action items from last 10 logs
+log actions thisweek        # Action items from this week
+log actions lastweek        # Action items from last week
+log actions --raw           # Pipe-friendly output
 ```
+
+Normal output:
+```
+=== 2026-02-02 | vims-website ===
+  1. Follow up with Sarah about API docs
+  2. Schedule review meeting
+
+=== 2026-02-01 | content-cleanup ===
+  3. Send reminder to publishers
+  4. Update tracking spreadsheet
+
+Enter number to open source log, or press Enter to exit:
+```
+
+Raw output (`--raw`):
+```
+2026-02-02 | vims-website | Follow up with Sarah about API docs
+2026-02-02 | vims-website | Schedule review meeting
+2026-02-01 | content-cleanup | Send reminder to publishers
+2026-02-01 | content-cleanup | Update tracking spreadsheet
+```
+
+The raw format uses ` | ` as delimiter for easy parsing with `cut` or `awk`.
 
 ## File Structure
 
@@ -96,13 +118,10 @@ Logs are stored in `~/work-logs/` with the following structure:
 
 ```
 ~/work-logs/
-├── .projects        # Auto-saved list of projects
-├── .contacts        # Auto-saved list of contacts
 ├── 2026/
 │   ├── 01/
 │   │   ├── log-2026-01-12.md
-│   │   ├── project-2026-01-12-api-refactoring.md
-│   │   └── meeting-2026-01-12-john-d.md
+│   │   └── log-2026-01-12-143052.md  # Second log same day
 │   └── 02/
 │       └── ...
 └── 2025/
@@ -113,41 +132,21 @@ Logs are stored in `~/work-logs/` with the following structure:
 
 Each log file uses YAML frontmatter for metadata:
 
-**Quick log:**
 ```markdown
 ---
 date: 2026-01-12
-type: log
----
-
-Your notes here...
-```
-
-**Project log:**
-```markdown
----
-date: 2026-01-12
-type: project
-project: API Refactoring
----
-
-Project notes here...
-```
-
-**Meeting notes:**
-```markdown
----
-date: 2026-01-12
-type: meeting
 project: API Refactoring
 contacts: [John D, Sarah M]
 ---
 
-## Meeting Notes
+Your notes here...
 
-- Discussion points...
-- Action items...
+## Action Items
+- Follow up with John about the spec
+- Review pull request #123
 ```
+
+The `## Action Items` section is parsed for the `log actions` command. Use standard markdown bullet points (`- `).
 
 ## Configuration
 
@@ -169,18 +168,9 @@ By default, logs are stored in `~/work-logs/`. To change this, edit `LOG_DIR` in
 LOG_DIR = Path.home() / "work-logs"
 ```
 
-## Auto-saved Data
-
-The tool maintains two hidden files for auto-completion:
-
-- **`.projects`**: List of all projects you've logged (one per line)
-- **`.contacts`**: List of all contacts from meetings (one per line)
-
-These files are automatically updated when you create logs and are used to provide quick selection options.
-
 ## Date Input
 
-When creating meeting notes, you can use flexible date formats:
+When creating logs, you can use flexible date formats:
 
 - `today` or press Enter (default)
 - `tomorrow` or `yesterday`
@@ -189,26 +179,42 @@ When creating meeting notes, you can use flexible date formats:
 - Month-day: `01-15` (current year assumed)
 - Day only: `15` (current month and year assumed)
 
+## Taskwarrior Integration
+
+Use the raw output mode to pipe action items to Taskwarrior or other task managers:
+
+```bash
+# Add all action items from this week as tasks
+log actions thisweek --raw | while IFS='|' read -r date project item; do
+  task add "$item" project:"${project// /}" due:eow
+done
+```
+
 ## Tips
 
-1. **Quick daily logs**: Create an alias for fast logging:
+1. **Quick alias**: Add to your shell config:
    ```bash
-   alias qlog="/path/to/log.py log"
+   alias log="/path/to/log.py"
    ```
 
-2. **Review recent work**: Use `list` to see your recent activity:
+2. **Review recent work**:
    ```bash
-   ./log.py list -n 5
+   log list thisweek
    ```
 
-3. **Project retrospectives**: Filter by project to review all related logs:
+3. **Project retrospectives**:
    ```bash
-   ./log.py list -p "Your Project Name"
+   log list project:"Your Project Name"
    ```
 
-4. **Find old notes**: Search by keywords, contact names, or project names:
+4. **Find old notes**:
    ```bash
-   ./log.py search "API endpoint discussion"
+   log search "API endpoint discussion"
+   ```
+
+5. **Weekly action item review**:
+   ```bash
+   log actions lastweek
    ```
 
 ## License

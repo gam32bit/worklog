@@ -3,12 +3,17 @@
 Work Log - Simple logging for projects, meetings, and notes.
 
 Usage:
-    log.py              # Interactive menu
-    log.py log          # Quick log (no project/meeting)
-    log.py project      # Log with project tag
-    log.py meeting      # Meeting log
-    log.py list         # List recent logs
-    log.py search       # Search logs
+    log                         # Create new log (interactive prompts)
+    log list recent             # Last 10 logs
+    log list thisweek           # This week's logs (most recent first)
+    log list lastweek           # Last week's logs (most recent first)
+    log list project:<name>     # Filter by project
+    log list contact:<name>     # Filter by contact
+    log search <query>          # Search log content
+    log actions                 # List action items (last 10 logs)
+    log actions thisweek        # Action items from this week
+    log actions lastweek        # Action items from last week
+    log actions --raw           # Pipe-friendly output for Taskwarrior integration
 """
 
 import sys
@@ -23,57 +28,23 @@ def main():
     args = sys.argv[1:]
 
     if not args:
-        run_interactive_menu()
+        # No arguments = create new log
+        commands.create_log()
         return
 
     cmd = args[0].lower()
     cmd_args = args[1:]
 
-    command_map = {
-        "log": commands.quick_log,
-        "project": commands.project_log,
-        "meeting": commands.meeting_log,
-        "list": commands.list_logs,
-        "search": commands.search_logs,
-        "projects": commands.list_projects,
-        "contacts": commands.list_contacts,
-    }
-
-    if cmd in command_map:
-        command_map[cmd](cmd_args)
+    if cmd == 'list':
+        commands.list_logs(cmd_args)
+    elif cmd == 'search':
+        commands.search_logs(cmd_args)
+    elif cmd == 'actions':
+        commands.list_actions(cmd_args)
     else:
         print(f"Unknown command: {cmd}")
-        print(__doc__)
+        print("Usage: log [list|search|actions]")
         sys.exit(1)
-
-
-def run_interactive_menu():
-    """Main entry point - mirrors your whiteboard flow."""
-    print("\n=== Work Log ===")
-    print("1. Quick log (no tags)")
-    print("2. Project log")
-    print("3. Meeting log")
-    print("4. List recent")
-    print("5. Search")
-    print("0. Exit")
-    print()
-
-    choice = input("Select (0-5): ").strip()
-
-    if choice == "0":
-        return
-    elif choice == "1":
-        commands.quick_log([])
-    elif choice == "2":
-        commands.project_log([])
-    elif choice == "3":
-        commands.meeting_log([])
-    elif choice == "4":
-        commands.list_logs([])
-    elif choice == "5":
-        commands.search_logs([])
-    else:
-        print("Invalid choice.")
 
 
 if __name__ == "__main__":

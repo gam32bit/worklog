@@ -14,7 +14,7 @@ class ParsedLog:
     filepath: Path
     frontmatter: dict[str, any] = field(default_factory=dict)
     content: str = ""
-    
+
     @property
     def date(self) -> str:
         return self.frontmatter.get("date", "")
@@ -32,12 +32,13 @@ class ParsedLog:
 
     @property
     def log_type(self) -> str:
+        """For backwards compatibility with old logs that have 'type' field."""
         return self.frontmatter.get("type", "log")
-    
+
     @property
     def project(self) -> str:
         return self.frontmatter.get("project", "")
-    
+
     @property
     def contacts(self) -> list[str]:
         c = self.frontmatter.get("contacts", [])
@@ -66,8 +67,8 @@ class ParsedLog:
 
         for line in self.content.splitlines():
             line = line.strip()
-            # Skip empty lines and markdown headers
-            if line and not line.startswith("#"):
+            # Skip empty lines, markdown headers, and section headers like "## Action Items"
+            if line and not line.startswith("#") and not line.startswith("- "):
                 # Truncate if longer than max_length
                 if len(line) > max_length:
                     return line[:max_length - 3] + "..."
@@ -76,12 +77,14 @@ class ParsedLog:
         return ""
 
     def matches_project(self, project: str) -> bool:
-        return self.project.lower() == project.lower()
-    
+        """Case-insensitive partial match on project name."""
+        return project.lower() in self.project.lower()
+
     def matches_contact(self, contact: str) -> bool:
+        """Case-insensitive partial match on contact list."""
         contact_lower = contact.lower()
-        return any(c.lower() == contact_lower for c in self.contacts)
-    
+        return any(contact_lower in c.lower() for c in self.contacts)
+
     def matches_search(self, query: str) -> bool:
         query_lower = query.lower()
         if query_lower in self.content.lower():
@@ -93,26 +96,59 @@ class ParsedLog:
                 return True
         return False
 
+    def extract_action_items(self) -> list[str]:
+        """Extract action items from the log content."""
+        items = []
+        in_action_section = False
+
+        for line in self.content.splitlines():
+            stripped = line.strip()
+
+            # Check if we're entering the action items section
+            if stripped.lower() in ('## action items', '## actions'):
+                in_action_section = True
+                continue
+
+            # Check if we've hit another heading (leaving action section)
+            if in_action_section and stripped.startswith('## '):
+                in_action_section = False
+                continue
+
+            # Capture bullet points in action section
+            if in_action_section and stripped.startswith('- '):
+                item_text = stripped[2:].strip()
+                # Skip empty bullets and checkbox-only bullets
+                if item_text and item_text not in ('[ ]', '[x]', '[X]'):
+                    # Remove checkbox prefix if present
+                    if item_text.startswith('[ ] '):
+                        item_text = item_text[4:]
+                    elif item_text.startswith('[x] ') or item_text.startswith('[X] '):
+                        item_text = item_text[4:]
+                    if item_text:
+                        items.append(item_text)
+
+        return items
+
 
 def parse_file(filepath: Path) -> ParsedLog | None:
     """Parse a log file, extracting frontmatter and content."""
     if not filepath.exists():
         return None
-    
+
     try:
         text = filepath.read_text(encoding="utf-8")
     except Exception as e:
         print(f"Warning: Could not read {filepath}: {e}")
         return None
-    
+
     result = ParsedLog(filepath=filepath)
-    
+
     if text.startswith("---"):
         parts = text.split("---", 2)
         if len(parts) >= 3:
             frontmatter_text = parts[1].strip()
             result.content = parts[2].strip()
-            
+
             for line in frontmatter_text.splitlines():
                 if ":" in line:
                     key, value = line.split(":", 1)
@@ -121,7 +157,7 @@ def parse_file(filepath: Path) -> ParsedLog | None:
             result.content = text
     else:
         result.content = text
-    
+
     return result
 
 
