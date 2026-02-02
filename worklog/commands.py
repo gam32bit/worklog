@@ -2,91 +2,40 @@
 Command implementations for work log.
 """
 
-from datetime import date, timedelta
-from collections import defaultdict
+from datetime import date
 from . import config, templates, ui, io as log_io, parser
 
 
-def quick_log(args: list[str]):
-    """Create a quick log with no tags."""
-    today = date.today()
-    
-    filepath = config.log_path(today)
+def create_log(args: list[str] = None):
+    """Create a new log with prompts for date, project, and contacts."""
+    # Prompt for date
+    date_input = input("Date (Enter for today, or type date/day): ").strip()
+    log_date = config.parse_date_input(date_input)
+    print(f"Log date: {log_date.strftime('%A, %B %d, %Y')}")
+
+    # Prompt for project
+    recent_projects = parser.get_recent_projects(5)
+    project = ui.select_from_recent(recent_projects, "Project:", allow_new=True) or ""
+
+    # Prompt for contacts
+    recent_contacts = parser.get_recent_contacts(5)
+    contacts = ui.select_multiple_from_recent(recent_contacts, "Contacts:")
+
+    # Create file path
+    filepath = config.log_path(log_date)
     filepath = log_io.generate_unique_filename(filepath)
-    
-    content = templates.quick_log_template(today)
+
+    # Generate content and write
+    content = templates.log_template(log_date, project, contacts)
     log_io.write_file(filepath, content)
-    
+
+    # Open in editor
     ui.open_in_editor(filepath)
     print(f"\nLog saved: {filepath}")
 
 
-def project_log(args: list[str]):
-    """Create a log tagged with a project."""
-    today = date.today()
-
-    if args:
-        project = " ".join(args)
-    else:
-        recent_projects = parser.get_recent_projects(5)
-        project = ui.select_from_recent(recent_projects, "Select project:", allow_new=True)
-
-    if not project:
-        print("No project selected. Creating quick log instead.")
-        quick_log([])
-        return
-
-    config.add_project(project)
-    
-    slug = project.lower().replace(" ", "-")[:20]
-    filepath = config.log_path(today, prefix="project", suffix=slug)
-    filepath = log_io.generate_unique_filename(filepath)
-    
-    content = templates.project_log_template(today, project)
-    log_io.write_file(filepath, content)
-    
-    ui.open_in_editor(filepath)
-    print(f"\nProject log saved: {filepath}")
-
-
-def meeting_log(args: list[str]):
-    """Create meeting notes."""
-    date_input = input("Date (Enter for today, or type date/day): ").strip()
-    meeting_date = config.parse_date_input(date_input)
-    print(f"Meeting date: {meeting_date.strftime('%A, %B %d, %Y')}")
-
-    recent_contacts = parser.get_recent_contacts(5)
-    contacts = ui.select_multiple_from_recent(recent_contacts, "Who's in this meeting?")
-
-    # Save any new contacts
-    for contact in contacts:
-        config.add_contact(contact)
-
-    recent_projects = parser.get_recent_projects(5)
-    project = ui.select_from_recent(recent_projects, "Related project (optional):", allow_new=True)
-
-    if project:
-        config.add_project(project)
-    
-    title = input("\nMeeting title (Enter to auto-generate): ").strip() or None
-    
-    if contacts:
-        contact_slug = contacts[0].lower().replace(" ", "-")
-        filepath = config.log_path(meeting_date, prefix="meeting", suffix=contact_slug)
-    else:
-        filepath = config.log_path(meeting_date, prefix="meeting")
-    
-    filepath = log_io.generate_unique_filename(filepath)
-    
-    content = templates.meeting_template(meeting_date, contacts, project, title)
-    log_io.write_file(filepath, content)
-    
-    ui.open_in_editor(filepath)
-    print(f"\nMeeting notes saved: {filepath}")
-
-
 def list_logs(args: list[str]):
-    """List recent logs with optional filtering."""
+    """List logs with subcommands: recent, thisweek, lastweek, project:<name>, contact:<name>."""
     logs = parser.parse_all_logs()
 
     if not logs:
@@ -96,96 +45,59 @@ def list_logs(args: list[str]):
     # Sort by date (most recent first)
     logs.sort(key=lambda log: log.date_obj or date.min, reverse=True)
 
+    # Parse arguments
     filter_project = None
     filter_contact = None
-    filter_type = None
+    filter_thisweek = False
+    filter_lastweek = False
     limit = 10
-    show_week = False
 
-    i = 0
-    while i < len(args):
-        if args[i] in ("-p", "--project") and i + 1 < len(args):
-            filter_project = args[i + 1]
-            i += 2
-        elif args[i] in ("-c", "--contact") and i + 1 < len(args):
-            filter_contact = args[i + 1]
-            i += 2
-        elif args[i] in ("-t", "--type") and i + 1 < len(args):
-            filter_type = args[i + 1]
-            i += 2
-        elif args[i] in ("-n", "--limit") and i + 1 < len(args):
-            limit = int(args[i + 1])
-            i += 2
-        elif args[i] in ("-w", "--week"):
-            show_week = True
-            i += 1
-        else:
-            i += 1
+    for arg in args:
+        arg_lower = arg.lower()
+        if arg_lower == "recent":
+            pass  # Default behavior
+        elif arg_lower == "thisweek":
+            filter_thisweek = True
+        elif arg_lower == "lastweek":
+            filter_lastweek = True
+        elif arg_lower.startswith("project:"):
+            filter_project = arg[8:]  # Keep original case
+        elif arg_lower.startswith("contact:"):
+            filter_contact = arg[8:]  # Keep original case
+
+    # Apply filters
+    if filter_thisweek:
+        logs = [log for log in logs if log.date_obj and config.is_this_week(log.date_obj)]
+    elif filter_lastweek:
+        logs = [log for log in logs if log.date_obj and config.is_last_week(log.date_obj)]
 
     if filter_project:
         logs = [log for log in logs if log.matches_project(filter_project)]
     if filter_contact:
         logs = [log for log in logs if log.matches_contact(filter_contact)]
-    if filter_type:
-        logs = [log for log in logs if log.log_type == filter_type]
 
-    # Filter by week if requested
-    if show_week:
-        today = date.today()
-        week_ago = today - timedelta(days=7)
-        logs = [log for log in logs if log.date_obj and log.date_obj >= week_ago]
-
-    if show_week:
-        # Group logs by date
-        logs_by_date = defaultdict(list)
-        for log in logs:
-            if log.date_obj:
-                logs_by_date[log.date_obj].append(log)
-
-        # Sort dates in reverse order (most recent first)
-        sorted_dates = sorted(logs_by_date.keys(), reverse=True)
-
-        # Build a flat list for numbering
-        displayed_logs = []
-        print()
-        for log_date in sorted_dates:
-            date_logs = logs_by_date[log_date]
-            # Display date header
-            print(f"=== {log_date.strftime('%A, %B %d, %Y')} ===")
-
-            for log in date_logs:
-                displayed_logs.append(log)
-                idx = len(displayed_logs)
-                project_display = log.project if log.project else "(none)"
-                # For meetings, show title before tag, then excerpt
-                if log.log_type == "meeting":
-                    title_prefix = f"{log.title} " if log.title else ""
-                    excerpt_text = log.excerpt(100)
-                    print(f"  {idx}. {title_prefix}[{log.log_type}] {project_display:<20} {excerpt_text}")
-                else:
-                    excerpt_text = log.excerpt(100)
-                    print(f"  {idx}. [{log.log_type}] {project_display:<20} {excerpt_text}")
-
-            print()  # Blank line between dates
-
-    else:
-        # Standard table view
-        print(f"\n{'#':<4} {'Date':<12} {'Type':<10} {'Project':<20} {'Excerpt':<30}")
-        print("-" * 79)
-
+    # Apply limit for 'recent' (unless filtered by week)
+    if not filter_thisweek and not filter_lastweek:
         displayed_logs = logs[:limit]
-        for i, log in enumerate(displayed_logs, 1):
-            # For meetings, show title with excerpt; for others, just excerpt
-            if log.log_type == "meeting" and log.title:
-                display_text = f"{log.title}: {log.excerpt(100)}"
-            else:
-                display_text = log.excerpt(100)
+    else:
+        displayed_logs = logs
 
-            print(f"{i:<4} {log.date:<12} {log.log_type:<10} {log.project[:20]:<20} {display_text:<30}")
+    if not displayed_logs:
+        print("No logs match the filter criteria.")
+        return
 
-        if len(logs) > limit:
-            print(f"\n... and {len(logs) - limit} more. Use -n to show more.")
+    # Display logs
+    print()
+    for i, log in enumerate(displayed_logs, 1):
+        project_display = log.project if log.project else "(none)"
+        excerpt_text = log.excerpt(60)
+        print(f"{i}. {log.date} | {project_display} | {excerpt_text}")
 
+    if not filter_thisweek and not filter_lastweek and len(logs) > limit:
+        print(f"\n... and {len(logs) - limit} more.")
+
+    # Prompt to open
+    print()
     choice = input("Enter number to open, or press Enter to exit: ").strip()
     if choice.isdigit():
         idx = int(choice) - 1
@@ -199,27 +111,26 @@ def search_logs(args: list[str]):
         query = " ".join(args)
     else:
         query = input("Search query: ").strip()
-    
+
     if not query:
         print("No query provided.")
         return
-    
+
     logs = parser.parse_all_logs()
     matches = [log for log in logs if log.matches_search(query)]
-    
+
     if not matches:
         print(f"No logs found matching '{query}'.")
         return
-    
+
+    # Sort by date (most recent first)
+    matches.sort(key=lambda log: log.date_obj or date.min, reverse=True)
+
     print(f"\nFound {len(matches)} log(s) matching '{query}':\n")
 
     for i, log in enumerate(matches[:20], 1):
-        # For meetings, show title instead of project
-        if log.log_type == "meeting":
-            display_label = log.title if log.title else "Meeting"
-        else:
-            display_label = log.project or "(no project)"
-        print(f"{i}. [{log.date}] {log.log_type}: {display_label}")
+        project_display = log.project if log.project else "(none)"
+        print(f"{i}. {log.date} | {project_display}")
 
         content_lower = log.content.lower()
         query_lower = query.lower()
@@ -234,7 +145,7 @@ def search_logs(args: list[str]):
                 snippet = snippet + "..."
             print(f"   \"{snippet}\"")
         print()
-    
+
     choice = input("Enter number to open, or press Enter to exit: ").strip()
     if choice.isdigit():
         idx = int(choice) - 1
@@ -242,27 +153,78 @@ def search_logs(args: list[str]):
             ui.open_in_editor(matches[idx].filepath)
 
 
-def list_projects(args: list[str]):
-    """List all known projects."""
-    projects = config.get_projects()
-    
-    if not projects:
-        print("No projects yet. Create a project log to add one.")
-        return
-    
-    print("\nProjects:")
-    for p in sorted(projects):
-        print(f"  - {p}")
+def list_actions(args: list[str]):
+    """List action items from logs."""
+    logs = parser.parse_all_logs()
 
-
-def list_contacts(args: list[str]):
-    """List all known contacts."""
-    contacts = config.get_contacts()
-    
-    if not contacts:
-        print("No contacts yet. Create a meeting to add one.")
+    if not logs:
+        print("No logs found.")
         return
-    
-    print("\nContacts:")
-    for c in sorted(contacts):
-        print(f"  - {c}")
+
+    # Sort by date (most recent first)
+    logs.sort(key=lambda log: log.date_obj or date.min, reverse=True)
+
+    # Parse arguments
+    filter_thisweek = False
+    filter_lastweek = False
+    raw_mode = False
+    limit = 10
+
+    for arg in args:
+        arg_lower = arg.lower()
+        if arg_lower == "thisweek":
+            filter_thisweek = True
+        elif arg_lower == "lastweek":
+            filter_lastweek = True
+        elif arg_lower == "--raw":
+            raw_mode = True
+
+    # Apply week filters
+    if filter_thisweek:
+        logs = [log for log in logs if log.date_obj and config.is_this_week(log.date_obj)]
+    elif filter_lastweek:
+        logs = [log for log in logs if log.date_obj and config.is_last_week(log.date_obj)]
+    else:
+        # Default: limit to most recent logs
+        logs = logs[:limit]
+
+    # Collect action items from each log
+    action_data = []  # List of (log, items) tuples
+    for log in logs:
+        items = log.extract_action_items()
+        if items:
+            action_data.append((log, items))
+
+    if not action_data:
+        print("No action items found.")
+        return
+
+    if raw_mode:
+        # Raw output for piping
+        for log, items in action_data:
+            project_display = log.project if log.project else "(none)"
+            for item in items:
+                print(f"{log.date} | {project_display} | {item}")
+        return
+
+    # Normal formatted output
+    item_number = 0
+    item_to_log = {}  # Map item number to log for opening
+
+    print()
+    for log, items in action_data:
+        project_display = log.project if log.project else "(none)"
+        print(f"=== {log.date} | {project_display} ===")
+
+        for item in items:
+            item_number += 1
+            item_to_log[item_number] = log
+            print(f"  {item_number}. {item}")
+
+        print()
+
+    choice = input("Enter number to open source log, or press Enter to exit: ").strip()
+    if choice.isdigit():
+        idx = int(choice)
+        if idx in item_to_log:
+            ui.open_in_editor(item_to_log[idx].filepath)

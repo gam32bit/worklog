@@ -10,7 +10,7 @@ from . import config
 def open_in_editor(filepath: Path) -> None:
     """Open file in user's editor."""
     editor = config.EDITOR
-    
+
     if editor in ('vim', 'nvim', 'vi'):
         subprocess.run([editor, "+$", str(filepath)])
     else:
@@ -123,46 +123,11 @@ def select_multiple_from_recent(recent_items: list[str], prompt: str) -> list[st
     return result
 
 
-def select_multiple_contacts(prompt: str) -> list[str]:
-    """
-    Let user select or enter multiple contacts.
-    Supports comma-separated entry.
-    """
-    contacts = config.get_contacts()
-    
-    print(f"\n{prompt}")
-    if contacts:
-        for i, contact in enumerate(contacts, 1):
-            print(f"  {i}. {contact}")
-    print("  Enter number(s) or name(s), comma-separated")
-    print("  (Enter to skip)")
-    print()
-    
-    choice = input("> ").strip()
-    
-    if not choice:
-        return []
-    
-    result = []
-    parts = [p.strip() for p in choice.split(",")]
-    
-    for part in parts:
-        if part.isdigit():
-            idx = int(part) - 1
-            if 0 <= idx < len(contacts):
-                result.append(contacts[idx])
-        elif part:
-            result.append(part)
-            config.add_contact(part)
-    
-    return result
-
-
 def confirm(prompt: str, default: bool = False) -> bool:
     """Simple yes/no confirmation."""
     suffix = " [Y/n]: " if default else " [y/N]: "
     response = input(prompt + suffix).strip().lower()
-    
+
     if not response:
         return default
     return response in ('y', 'yes')
