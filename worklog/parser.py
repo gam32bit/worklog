@@ -49,7 +49,11 @@ class ParsedLog:
 
     @property
     def title(self) -> str:
-        """Extract title from the first heading in content."""
+        """Get title from frontmatter, falling back to first heading in content."""
+        fm_title = self.frontmatter.get("title", "")
+        if fm_title:
+            return fm_title
+
         if not self.content:
             return ""
 
@@ -85,11 +89,17 @@ class ParsedLog:
         contact_lower = contact.lower()
         return any(contact_lower in c.lower() for c in self.contacts)
 
+    def matches_title(self, title_query: str) -> bool:
+        """Case-insensitive partial match on title."""
+        return title_query.lower() in self.title.lower()
+
     def matches_search(self, query: str) -> bool:
         query_lower = query.lower()
         if query_lower in self.content.lower():
             return True
         if query_lower in self.project.lower():
+            return True
+        if query_lower in self.title.lower():
             return True
         for c in self.contacts:
             if query_lower in c.lower():

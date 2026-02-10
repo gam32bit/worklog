@@ -21,12 +21,15 @@ def create_log(args: list[str] = None):
     recent_contacts = parser.get_recent_contacts(5)
     contacts = ui.select_multiple_from_recent(recent_contacts, "Contacts:")
 
+    # Prompt for title
+    title = input("\nTitle (Enter to skip): ").strip()
+
     # Create file path
     filepath = config.log_path(log_date)
     filepath = log_io.generate_unique_filename(filepath)
 
     # Generate content and write
-    content = templates.log_template(log_date, project, contacts)
+    content = templates.log_template(log_date, project, contacts, title)
     log_io.write_file(filepath, content)
 
     # Open in editor
@@ -35,7 +38,7 @@ def create_log(args: list[str] = None):
 
 
 def list_logs(args: list[str]):
-    """List logs with subcommands: recent, thisweek, lastweek, project:<name>, contact:<name>."""
+    """List logs with subcommands: recent, thisweek, lastweek, project:<name>, contact:<name>, title:<query>."""
     logs = parser.parse_all_logs()
 
     if not logs:
@@ -48,6 +51,7 @@ def list_logs(args: list[str]):
     # Parse arguments
     filter_project = None
     filter_contact = None
+    filter_title = None
     filter_thisweek = False
     filter_lastweek = False
     limit = 10
@@ -64,6 +68,8 @@ def list_logs(args: list[str]):
             filter_project = arg[8:]  # Keep original case
         elif arg_lower.startswith("contact:"):
             filter_contact = arg[8:]  # Keep original case
+        elif arg_lower.startswith("title:"):
+            filter_title = arg[6:]  # Keep original case
 
     # Apply filters
     if filter_thisweek:
@@ -75,6 +81,8 @@ def list_logs(args: list[str]):
         logs = [log for log in logs if log.matches_project(filter_project)]
     if filter_contact:
         logs = [log for log in logs if log.matches_contact(filter_contact)]
+    if filter_title:
+        logs = [log for log in logs if log.matches_title(filter_title)]
 
     # Apply limit for 'recent' (unless filtered by week)
     if not filter_thisweek and not filter_lastweek:
@@ -90,8 +98,9 @@ def list_logs(args: list[str]):
     print()
     for i, log in enumerate(displayed_logs, 1):
         project_display = log.project if log.project else "(none)"
+        title_display = f" | {log.title}" if log.title else ""
         excerpt_text = log.excerpt(60)
-        print(f"{i}. {log.date} | {project_display} | {excerpt_text}")
+        print(f"{i}. {log.date} | {project_display}{title_display} | {excerpt_text}")
 
     if not filter_thisweek and not filter_lastweek and len(logs) > limit:
         print(f"\n... and {len(logs) - limit} more.")
@@ -130,7 +139,8 @@ def search_logs(args: list[str]):
 
     for i, log in enumerate(matches[:20], 1):
         project_display = log.project if log.project else "(none)"
-        print(f"{i}. {log.date} | {project_display}")
+        title_display = f" | {log.title}" if log.title else ""
+        print(f"{i}. {log.date} | {project_display}{title_display}")
 
         content_lower = log.content.lower()
         query_lower = query.lower()
@@ -203,8 +213,9 @@ def list_actions(args: list[str]):
         # Raw output for piping
         for log, items in action_data:
             project_display = log.project if log.project else "(none)"
+            title_display = f" | {log.title}" if log.title else ""
             for item in items:
-                print(f"{log.date} | {project_display} | {item}")
+                print(f"{log.date} | {project_display}{title_display} | {item}")
         return
 
     # Normal formatted output
@@ -214,7 +225,8 @@ def list_actions(args: list[str]):
     print()
     for log, items in action_data:
         project_display = log.project if log.project else "(none)"
-        print(f"=== {log.date} | {project_display} ===")
+        title_display = f" | {log.title}" if log.title else ""
+        print(f"=== {log.date} | {project_display}{title_display} ===")
 
         for item in items:
             item_number += 1

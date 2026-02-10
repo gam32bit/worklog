@@ -9,6 +9,7 @@ Usage:
     log list lastweek           # Last week's logs (most recent first)
     log list project:<name>     # Filter by project
     log list contact:<name>     # Filter by contact
+    log list title:<query>      # Filter by title
     log search <query>          # Search log content
     log actions                 # List action items (last 10 logs)
     log actions thisweek        # Action items from this week
