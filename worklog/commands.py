@@ -14,11 +14,12 @@ def create_log(args: list[str] = None):
     print(f"Log date: {log_date.strftime('%A, %B %d, %Y')}")
 
     # Prompt for project
-    recent_projects = parser.get_recent_projects(5)
+    all_logs = parser.parse_all_logs()
+    recent_projects = parser.get_recent_projects(5, all_logs)
     project = ui.select_from_recent(recent_projects, "Project:", allow_new=True) or ""
 
     # Prompt for contacts
-    recent_contacts = parser.get_recent_contacts(5)
+    recent_contacts = parser.get_recent_contacts(5, all_logs)
     contacts = ui.select_multiple_from_recent(recent_contacts, "Contacts:")
 
     # Prompt for title
@@ -135,9 +136,10 @@ def search_logs(args: list[str]):
     # Sort by date (most recent first)
     matches.sort(key=lambda log: log.date_obj or date.min, reverse=True)
 
+    displayed = matches[:20]
     print(f"\nFound {len(matches)} log(s) matching '{query}':\n")
 
-    for i, log in enumerate(matches[:20], 1):
+    for i, log in enumerate(displayed, 1):
         project_display = log.project if log.project else "(none)"
         title_display = f" | {log.title}" if log.title else ""
         print(f"{i}. {log.date} | {project_display}{title_display}")
@@ -159,8 +161,8 @@ def search_logs(args: list[str]):
     choice = input("Enter number to open, or press Enter to exit: ").strip()
     if choice.isdigit():
         idx = int(choice) - 1
-        if 0 <= idx < len(matches):
-            ui.open_in_editor(matches[idx].filepath)
+        if 0 <= idx < len(displayed):
+            ui.open_in_editor(displayed[idx].filepath)
 
 
 def list_actions(args: list[str]):

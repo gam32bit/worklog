@@ -7,6 +7,22 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime
 
+try:
+    import yaml as _yaml
+
+    def _parse_frontmatter(text: str) -> dict:
+        parsed = _yaml.safe_load(text)
+        return parsed if isinstance(parsed, dict) else {}
+
+except ImportError:
+    def _parse_frontmatter(text: str) -> dict:
+        result = {}
+        for line in text.splitlines():
+            if ":" in line:
+                key, value = line.split(":", 1)
+                result[key.strip()] = value.strip()
+        return result
+
 
 @dataclass
 class ParsedLog:
@@ -17,11 +33,16 @@ class ParsedLog:
 
     @property
     def date(self) -> str:
-        return self.frontmatter.get("date", "")
+        d = self.frontmatter.get("date")
+        if d is None:
+            return ""
+        if hasattr(d, "isoformat"):  # yaml parses YYYY-MM-DD as datetime.date
+            return d.isoformat()
+        return str(d)
 
     @property
     def date_obj(self):
-        """Parse date string and return datetime.date object, or None if invalid."""
+        """Return datetime.date object, or None if invalid."""
         date_str = self.date
         if not date_str:
             return None
@@ -31,26 +52,21 @@ class ParsedLog:
             return None
 
     @property
-    def log_type(self) -> str:
-        """For backwards compatibility with old logs that have 'type' field."""
-        return self.frontmatter.get("type", "log")
-
-    @property
     def project(self) -> str:
-        return self.frontmatter.get("project", "")
+        return self.frontmatter.get("project") or ""
 
     @property
     def contacts(self) -> list[str]:
-        c = self.frontmatter.get("contacts", [])
+        c = self.frontmatter.get("contacts") or []
         if isinstance(c, str):
-            c = c.strip("[]")
+            c = c.strip("[]")  # handle hand-rolled parser storing "[A, B]" as a string
             return [x.strip() for x in c.split(",") if x.strip()]
-        return c if c else []
+        return [str(x) for x in c]
 
     @property
     def title(self) -> str:
         """Get title from frontmatter, falling back to first heading in content."""
-        fm_title = self.frontmatter.get("title", "")
+        fm_title = self.frontmatter.get("title") or ""
         if fm_title:
             return fm_title
 
@@ -158,11 +174,7 @@ def parse_file(filepath: Path) -> ParsedLog | None:
         if len(parts) >= 3:
             frontmatter_text = parts[1].strip()
             result.content = parts[2].strip()
-
-            for line in frontmatter_text.splitlines():
-                if ":" in line:
-                    key, value = line.split(":", 1)
-                    result.frontmatter[key.strip()] = value.strip()
+            result.frontmatter = _parse_frontmatter(frontmatter_text)
         else:
             result.content = text
     else:
@@ -184,9 +196,10 @@ def parse_all_logs() -> list[ParsedLog]:
     return logs
 
 
-def get_recent_projects(limit: int = 5) -> list[str]:
+def get_recent_projects(limit: int = 5, logs: list = None) -> list[str]:
     """Get projects from most recent logs, ordered by recency."""
-    logs = parse_all_logs()
+    if logs is None:
+        logs = parse_all_logs()
     seen = set()
     recent_projects = []
 
@@ -200,9 +213,10 @@ def get_recent_projects(limit: int = 5) -> list[str]:
     return recent_projects
 
 
-def get_recent_contacts(limit: int = 5) -> list[str]:
+def get_recent_contacts(limit: int = 5, logs: list = None) -> list[str]:
     """Get contacts from most recent logs, ordered by recency."""
-    logs = parse_all_logs()
+    if logs is None:
+        logs = parse_all_logs()
     seen = set()
     recent_contacts = []
 

@@ -6,8 +6,8 @@ import os
 from pathlib import Path
 from datetime import date, timedelta
 
-# Base directory - change this to wherever you want logs stored
-LOG_DIR = Path.home() / "work-logs"
+# Base directory - override with WORKLOG_DIR environment variable
+LOG_DIR = Path(os.environ.get("WORKLOG_DIR", Path.home() / "work-logs"))
 
 # Editor
 EDITOR = os.environ.get("EDITOR", "vim")
@@ -41,13 +41,13 @@ def parse_date_input(text: str) -> date:
     if text == "yesterday":
         return today - timedelta(days=1)
 
-    # Day of week
+    # Day of week — return the most recent past occurrence (never future)
     days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
     if text in days:
         target_weekday = days.index(text)
         current_weekday = today.weekday()
-        days_ahead = (target_weekday - current_weekday) % 7
-        return today + timedelta(days=days_ahead)
+        days_back = (current_weekday - target_weekday) % 7
+        return today - timedelta(days=days_back)
 
     # Try parsing as date
     try:
