@@ -122,8 +122,12 @@ class ParsedLog:
                 return True
         return False
 
-    def extract_action_items(self) -> list[str]:
-        """Extract action items from the log content."""
+    def extract_action_items(self, include_reviewed: bool = False) -> list[str]:
+        """Extract action items from the log content.
+
+        Returns items as strings. Reviewed items (marked [x]) are skipped unless
+        include_reviewed=True, in which case they are returned with a '[done] ' prefix.
+        """
         items = []
         in_action_section = False
 
@@ -131,7 +135,7 @@ class ParsedLog:
             stripped = line.strip()
 
             # Check if we're entering the action items section
-            if stripped.lower() in ('## action items', '## actions'):
+            if stripped.lower() in ('## next steps', '## action items', '## actions'):
                 in_action_section = True
                 continue
 
@@ -144,14 +148,42 @@ class ParsedLog:
             if in_action_section and stripped.startswith('- '):
                 item_text = stripped[2:].strip()
                 # Skip empty bullets and checkbox-only bullets
-                if item_text and item_text not in ('[ ]', '[x]', '[X]'):
-                    # Remove checkbox prefix if present
-                    if item_text.startswith('[ ] '):
-                        item_text = item_text[4:]
-                    elif item_text.startswith('[x] ') or item_text.startswith('[X] '):
-                        item_text = item_text[4:]
-                    if item_text:
-                        items.append(item_text)
+                if not item_text or item_text in ('[ ]', '[x]', '[X]'):
+                    continue
+                # Handle reviewed items
+                if item_text.startswith('[x] ') or item_text.startswith('[X] '):
+                    if include_reviewed:
+                        items.append('[done] ' + item_text[4:])
+                    # else: skip reviewed items
+                    continue
+                # Strip unchecked checkbox prefix
+                if item_text.startswith('[ ] '):
+                    item_text = item_text[4:]
+                if item_text:
+                    items.append(item_text)
+
+        return items
+
+    def extract_session_actions(self) -> list[str]:
+        """Extract session actions from the ## Session Actions section."""
+        items = []
+        in_section = False
+
+        for line in self.content.splitlines():
+            stripped = line.strip()
+
+            if stripped.lower() == '## session actions':
+                in_section = True
+                continue
+
+            if in_section and stripped.startswith('## '):
+                in_section = False
+                continue
+
+            if in_section and stripped.startswith('- '):
+                item_text = stripped[2:].strip()
+                if item_text:
+                    items.append(item_text)
 
         return items
 
@@ -211,6 +243,45 @@ def get_recent_projects(limit: int = 5, logs: list = None) -> list[str]:
                 break
 
     return recent_projects
+
+
+def mark_action_reviewed(file_path: Path, item_text: str) -> bool:
+    """Mark an action item as reviewed by adding [x] prefix in the source file.
+
+    Finds the line '- item_text' (or '- [ ] item_text') and rewrites it as '- [x] item_text'.
+    Returns True if the item was found and marked, False otherwise.
+    """
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except Exception:
+        return False
+
+    lines = text.splitlines(keepends=True)
+    # Search for the item line inside the action section
+    action_headers = {'## next steps', '## action items', '## actions'}
+    in_section = False
+    modified = False
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.lower() in action_headers:
+            in_section = True
+            continue
+        if in_section and stripped.startswith('## '):
+            in_section = False
+            continue
+        if in_section and stripped.startswith('- '):
+            bullet_content = stripped[2:].strip()
+            # Match plain item or unchecked checkbox item
+            if bullet_content == item_text or bullet_content == f'[ ] {item_text}':
+                indent = line[: len(line) - len(line.lstrip())]
+                lines[i] = f'{indent}- [x] {item_text}\n'
+                modified = True
+                break
+
+    if modified:
+        file_path.write_text("".join(lines), encoding="utf-8")
+    return modified
 
 
 def get_recent_contacts(limit: int = 5, logs: list = None) -> list[str]:

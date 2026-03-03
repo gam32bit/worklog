@@ -90,3 +90,15 @@ def is_this_week(d: date) -> bool:
 def is_last_week(d: date) -> bool:
     monday, sunday = get_week_range(-1)
     return monday <= d <= sunday
+
+
+def is_this_month(d: date) -> bool:
+    today = date.today()
+    return d.year == today.year and d.month == today.month
+
+
+def is_last_month(d: date) -> bool:
+    today = date.today()
+    if today.month == 1:
+        return d.year == today.year - 1 and d.month == 12
+    return d.year == today.year and d.month == today.month - 1

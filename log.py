@@ -4,17 +4,25 @@ Work Log - Simple logging for projects, meetings, and notes.
 
 Usage:
     log                         # Create new log (interactive prompts)
+    log "note text"             # Quick log — saves immediately, no prompts
     log list recent             # Last 10 logs
     log list thisweek           # This week's logs (most recent first)
     log list lastweek           # Last week's logs (most recent first)
+    log list thismonth          # This month's logs
+    log list lastmonth          # Last month's logs
     log list project:<name>     # Filter by project
     log list contact:<name>     # Filter by contact
     log list title:<query>      # Filter by title
     log search <query>          # Search log content
-    log actions                 # List action items (last 10 logs)
-    log actions thisweek        # Action items from this week
-    log actions lastweek        # Action items from last week
-    log actions --raw           # Pipe-friendly output for Taskwarrior integration
+    log next                    # List Next Steps items (last 10 logs)
+    log next thisweek           # Next Steps from this week
+    log next lastweek           # Next Steps from last week
+    log next thismonth          # Next Steps from this month
+    log next lastmonth          # Next Steps from last month
+    log next --all              # Include reviewed ([x]) items
+    log done                    # List Session Actions (last 10 logs)
+    log done thisweek           # Session Actions from this week
+    log actions                 # Alias for 'log next'
 """
 
 import sys
@@ -23,6 +31,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from worklog import commands
+
+KNOWN_COMMANDS = {'list', 'search', 'next', 'actions', 'done'}
 
 
 def main():
@@ -40,12 +50,14 @@ def main():
         commands.list_logs(cmd_args)
     elif cmd == 'search':
         commands.search_logs(cmd_args)
-    elif cmd == 'actions':
-        commands.list_actions(cmd_args)
+    elif cmd in ('next', 'actions'):
+        commands.list_next_steps(cmd_args)
+    elif cmd == 'done':
+        commands.list_session_actions(cmd_args)
     else:
-        print(f"Unknown command: {cmd}")
-        print("Usage: log [list|search|actions]")
-        sys.exit(1)
+        # Not a known command — treat all args as a quick note
+        note = " ".join(sys.argv[1:])
+        commands.create_quick_log(note)
 
 
 if __name__ == "__main__":
