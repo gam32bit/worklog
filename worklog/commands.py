@@ -48,12 +48,7 @@ def create_quick_log(note: str):
     filepath = log_io.generate_unique_filename(filepath)
 
     content = templates.log_template(log_date, "", [], title)
-    # Append the note as the body before the sections
-    parts = content.split("\n\n\n", 1)
-    if len(parts) == 2:
-        content = parts[0] + f"\n\n\n{note}\n\n" + parts[1].lstrip()
-    else:
-        content = content + f"\n{note}\n"
+    content = content.replace("\n## Session Actions\n-\n", f"\n## Session Actions\n- {note}\n", 1)
 
     log_io.write_file(filepath, content)
     print(f"Log saved: {filepath}")
