@@ -10,11 +10,3 @@ from . import parser
 from . import commands
 
 __all__ = ["config", "templates", "ui", "io", "parser", "commands"]
-```
-
-### .gitignore
-```
-__pycache__/
-*.pyc
-.DS_Store
-*:Zone.Identifier

@@ -32,6 +32,7 @@ def create_log(args: list[str] = None):
 
     # Generate content and write
     content = templates.log_template(log_date, project, contacts, title)
+    content = content.replace("{BODY}", "")
     log_io.write_file(filepath, content)
 
     # Open in editor

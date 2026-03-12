@@ -7,22 +7,11 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime
 
-try:
-    import yaml as _yaml
+import yaml
 
-    def _parse_frontmatter(text: str) -> dict:
-        parsed = _yaml.safe_load(text)
-        return parsed if isinstance(parsed, dict) else {}
-
-except ImportError:
-    def _parse_frontmatter(text: str) -> dict:
-        result = {}
-        for line in text.splitlines():
-            if ":" in line:
-                key, value = line.split(":", 1)
-                result[key.strip()] = value.strip()
-        return result
-
+def _parse_frontmatter(text: str) -> dict:
+    parsed = yaml.safe_load(text)
+    return parsed if isinstance(parsed, dict) else {}
 
 @dataclass
 class ParsedLog:
@@ -59,7 +48,6 @@ class ParsedLog:
     def contacts(self) -> list[str]:
         c = self.frontmatter.get("contacts") or []
         if isinstance(c, str):
-            c = c.strip("[]")  # handle hand-rolled parser storing "[A, B]" as a string
             return [x.strip() for x in c.split(",") if x.strip()]
         return [str(x) for x in c]
 
