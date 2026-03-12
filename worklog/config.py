@@ -40,6 +40,13 @@ def parse_date_input(text: str) -> date:
         return today + timedelta(days=1)
     if text == "yesterday":
         return today - timedelta(days=1)
+    if text in ("eow", "end of week", "friday"):
+        days_until_friday = (4 - today.weekday()) % 7
+        return today + timedelta(days=days_until_friday)
+
+    # Relative days like +3
+    if text.startswith("+") and text[1:].isdigit():
+        return today + timedelta(days=int(text[1:]))
 
     # Day of week — return the most recent past occurrence (never future)
     days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]

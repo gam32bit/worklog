@@ -46,39 +46,28 @@ This prompts for:
 
 Then opens the log in your editor.
 
-### List Logs
+### Browsing and Searching Logs
+
+Logs are plain Markdown files stored in `~/work-logs/YYYY/MM/`. Use your shell's native tools to browse and search them:
 
 ```bash
-log list recent             # Last 10 logs (default)
-log list thisweek           # This week's logs (Monday through today)
-log list lastweek           # Last week's logs (Monday to Sunday)
-log list project:<name>     # Filter by project (case-insensitive partial match)
-log list contact:<name>     # Filter by contact (case-insensitive partial match)
+# Browse logs interactively (requires fzf)
+logbrowse
+
+# Full-text search across all logs
+logsearch "api endpoint"
+
+# Filter by project
+logproject "api-refactor"
+
+# Filter by contact
+logcontact "sarah"
+
+# Review this week's logs
+logweek
 ```
 
-Filters can be combined:
-
-```bash
-log list thisweek project:api-refactor
-log list lastweek contact:sarah
-```
-
-Output format:
-```
-1. 2026-02-02 | vims-website | First line of content here...
-2. 2026-02-01 | content-cleanup | Another log excerpt...
-3. 2026-01-31 | (none) | Log without project...
-
-Enter number to open, or press Enter to exit:
-```
-
-### Search Logs
-
-```bash
-log search <query>          # Search log content
-log search "api endpoint"   # Multi-word search
-log search                  # Prompts for query
-```
+See `shell-functions.sh` in the repo root to install these helpers.
 
 ### Action Items
 
@@ -199,17 +188,17 @@ done
 
 2. **Review recent work**:
    ```bash
-   log list thisweek
+   logweek
    ```
 
 3. **Project retrospectives**:
    ```bash
-   log list project:"Your Project Name"
+   logproject "Your Project Name"
    ```
 
 4. **Find old notes**:
    ```bash
-   log search "API endpoint discussion"
+   logsearch "API endpoint discussion"
    ```
 
 5. **Weekly action item review**:

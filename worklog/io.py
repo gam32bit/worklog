@@ -18,7 +18,7 @@ def generate_unique_filename(base_path: Path) -> Path:
     if not base_path.exists():
         return base_path
     
-    timestamp = datetime.now().strftime("%H%M%S")
+    timestamp = datetime.now().strftime("%H%M%S%f")
     stem = base_path.stem
     suffix = base_path.suffix
     new_name = f"{stem}-{timestamp}{suffix}"
@@ -35,4 +35,4 @@ def find_all_logs() -> list[Path]:
     for md_file in log_dir.rglob("*.md"):
         logs.append(md_file)
     
-    return sorted(logs, reverse=True)
+    return sorted(logs, key=lambda p: p.stem[:10], reverse=True)

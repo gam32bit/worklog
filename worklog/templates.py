@@ -16,7 +16,7 @@ contacts: [{contacts_str}]
 title: {title}
 ---
 
-{BODY}
+{{BODY}}
 
 ## Session Actions
 -

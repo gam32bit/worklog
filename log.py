@@ -5,15 +5,6 @@ Work Log - Simple logging for projects, meetings, and notes.
 Usage:
     log                         # Create new log (interactive prompts)
     log "note text"             # Quick log — saves immediately, no prompts
-    log list recent             # Last 10 logs
-    log list thisweek           # This week's logs (most recent first)
-    log list lastweek           # Last week's logs (most recent first)
-    log list thismonth          # This month's logs
-    log list lastmonth          # Last month's logs
-    log list project:<name>     # Filter by project
-    log list contact:<name>     # Filter by contact
-    log list title:<query>      # Filter by title
-    log search <query>          # Search log content
     log next                    # List Next Steps items (last 10 logs)
     log next thisweek           # Next Steps from this week
     log next lastweek           # Next Steps from last week
@@ -32,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from worklog import commands
 
-KNOWN_COMMANDS = {'list', 'search', 'next', 'actions', 'done'}
+KNOWN_COMMANDS = {'next', 'actions', 'done'}
 
 
 def main():
@@ -46,11 +37,7 @@ def main():
     cmd = args[0].lower()
     cmd_args = args[1:]
 
-    if cmd == 'list':
-        commands.list_logs(cmd_args)
-    elif cmd == 'search':
-        commands.search_logs(cmd_args)
-    elif cmd in ('next', 'actions'):
+    if cmd in ('next', 'actions'):
         commands.list_next_steps(cmd_args)
     elif cmd == 'done':
         commands.list_session_actions(cmd_args)

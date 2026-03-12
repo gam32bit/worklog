@@ -68,111 +68,128 @@ class ParsedLog:
 
         return ""
 
-    def excerpt(self, max_length: int = 50) -> str:
-        """Get the first meaningful line of content for display."""
-        if not self.content:
-            return ""
-
-        for line in self.content.splitlines():
-            line = line.strip()
-            # Skip empty lines, markdown headers, and section headers like "## Action Items"
-            if line and not line.startswith("#") and not line.startswith("- "):
-                # Truncate if longer than max_length
-                if len(line) > max_length:
-                    return line[:max_length - 3] + "..."
-                return line
-
-        return ""
-
-    def matches_project(self, project: str) -> bool:
-        """Case-insensitive partial match on project name."""
-        return project.lower() in self.project.lower()
-
-    def matches_contact(self, contact: str) -> bool:
-        """Case-insensitive partial match on contact list."""
-        contact_lower = contact.lower()
-        return any(contact_lower in c.lower() for c in self.contacts)
-
-    def matches_title(self, title_query: str) -> bool:
-        """Case-insensitive partial match on title."""
-        return title_query.lower() in self.title.lower()
-
-    def matches_search(self, query: str) -> bool:
-        query_lower = query.lower()
-        if query_lower in self.content.lower():
-            return True
-        if query_lower in self.project.lower():
-            return True
-        if query_lower in self.title.lower():
-            return True
-        for c in self.contacts:
-            if query_lower in c.lower():
-                return True
-        return False
-
     def extract_action_items(self, include_reviewed: bool = False) -> list[str]:
         """Extract action items from the log content.
 
         Returns items as strings. Reviewed items (marked [x]) are skipped unless
         include_reviewed=True, in which case they are returned with a '[done] ' prefix.
+        Indented continuation lines (2+ spaces or a tab after a bullet) are appended
+        to the current item.
         """
+        _ACTION_HEADERS = {
+            '## next steps', '## action items', '## actions',
+            '## todo', '## tasks',
+        }
         items = []
         in_action_section = False
+        current_item = None
+        current_is_reviewed = False
+
+        def _flush():
+            nonlocal current_item, current_is_reviewed
+            if current_item is not None:
+                if current_is_reviewed:
+                    if include_reviewed:
+                        items.append('[done] ' + current_item)
+                else:
+                    items.append(current_item)
+            current_item = None
+            current_is_reviewed = False
 
         for line in self.content.splitlines():
             stripped = line.strip()
 
-            # Check if we're entering the action items section
-            if stripped.lower() in ('## next steps', '## action items', '## actions'):
+            # Check if we're entering an action items section
+            if stripped.lower() in _ACTION_HEADERS:
+                _flush()
                 in_action_section = True
                 continue
 
             # Check if we've hit another heading (leaving action section)
             if in_action_section and stripped.startswith('## '):
+                _flush()
                 in_action_section = False
                 continue
 
-            # Capture bullet points in action section
-            if in_action_section and stripped.startswith('- '):
+            if not in_action_section:
+                continue
+
+            # Continuation line: starts with 2+ spaces or a tab, and we have a current item
+            if current_item is not None and (line.startswith('  ') or line.startswith('\t')):
+                current_item = current_item + ' ' + stripped
+                continue
+
+            # New bullet point
+            if stripped.startswith('- '):
+                _flush()
                 item_text = stripped[2:].strip()
                 # Skip empty bullets and checkbox-only bullets
                 if not item_text or item_text in ('[ ]', '[x]', '[X]'):
                     continue
                 # Handle reviewed items
                 if item_text.startswith('[x] ') or item_text.startswith('[X] '):
-                    if include_reviewed:
-                        items.append('[done] ' + item_text[4:])
-                    # else: skip reviewed items
+                    current_item = item_text[4:]
+                    current_is_reviewed = True
                     continue
                 # Strip unchecked checkbox prefix
                 if item_text.startswith('[ ] '):
                     item_text = item_text[4:]
                 if item_text:
-                    items.append(item_text)
+                    current_item = item_text
+                    current_is_reviewed = False
+            else:
+                # Non-bullet, non-continuation line — flush current item
+                _flush()
 
+        _flush()
         return items
 
     def extract_session_actions(self) -> list[str]:
-        """Extract session actions from the ## Session Actions section."""
+        """Extract session actions from the ## Session Actions section.
+
+        Indented continuation lines (2+ spaces or a tab after a bullet) are
+        appended to the current item.
+        """
         items = []
         in_section = False
+        current_item = None
+
+        def _flush():
+            nonlocal current_item
+            if current_item is not None:
+                items.append(current_item)
+            current_item = None
 
         for line in self.content.splitlines():
             stripped = line.strip()
 
             if stripped.lower() == '## session actions':
+                _flush()
                 in_section = True
                 continue
 
             if in_section and stripped.startswith('## '):
+                _flush()
                 in_section = False
                 continue
 
-            if in_section and stripped.startswith('- '):
+            if not in_section:
+                continue
+
+            # Continuation line
+            if current_item is not None and (line.startswith('  ') or line.startswith('\t')):
+                current_item = current_item + ' ' + stripped
+                continue
+
+            if stripped.startswith('- '):
+                _flush()
                 item_text = stripped[2:].strip()
                 if item_text:
-                    items.append(item_text)
+                    current_item = item_text
+            else:
+                _flush()
 
+        _flush()
         return items
 
 
@@ -246,7 +263,7 @@ def mark_action_reviewed(file_path: Path, item_text: str) -> bool:
 
     lines = text.splitlines(keepends=True)
     # Search for the item line inside the action section
-    action_headers = {'## next steps', '## action items', '## actions'}
+    action_headers = {'## next steps', '## action items', '## actions', '## todo', '## tasks'}
     in_section = False
     modified = False
 
