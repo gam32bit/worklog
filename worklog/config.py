@@ -9,15 +9,21 @@ from datetime import date, timedelta
 # Base directory - override with WORKLOG_DIR environment variable
 LOG_DIR = Path(os.environ.get("WORKLOG_DIR", Path.home() / "work-logs"))
 
+# Vimwiki directory - override with WIKI_DIR environment variable
+WIKI_DIR = Path(os.environ.get("WIKI_DIR", Path.home() / "vimwiki"))
+
 # Editor
 EDITOR = os.environ.get("EDITOR", "vim")
 
 
-def log_path(d: date) -> Path:
+def log_path(d: date, slug: str = "") -> Path:
     """
-    Build path: LOG_DIR/YYYY/MM/log-YYYY-MM-DD.md
+    Build path: LOG_DIR/YYYY/MM/log-YYYY-MM-DD[-slug].md
     """
-    filename = f"log-{d}.md"
+    if slug:
+        filename = f"log-{d}-{slug}.md"
+    else:
+        filename = f"log-{d}.md"
     return LOG_DIR / f"{d.year}" / f"{d.month:02d}" / filename
 
 
@@ -73,39 +79,3 @@ def parse_date_input(text: str) -> date:
 
     print(f"Couldn't parse '{text}', using today.")
     return today
-
-
-def get_week_range(week_offset: int = 0) -> tuple[date, date]:
-    """
-    Get start (Monday) and end (Sunday) of a week.
-    week_offset=0 is current week, week_offset=-1 is last week.
-    """
-    today = date.today()
-    # Find Monday of current week
-    monday = today - timedelta(days=today.weekday())
-    # Apply offset
-    monday = monday + timedelta(weeks=week_offset)
-    sunday = monday + timedelta(days=6)
-    return monday, sunday
-
-
-def is_this_week(d: date) -> bool:
-    monday, sunday = get_week_range(0)
-    return monday <= d <= sunday
-
-
-def is_last_week(d: date) -> bool:
-    monday, sunday = get_week_range(-1)
-    return monday <= d <= sunday
-
-
-def is_this_month(d: date) -> bool:
-    today = date.today()
-    return d.year == today.year and d.month == today.month
-
-
-def is_last_month(d: date) -> bool:
-    today = date.today()
-    if today.month == 1:
-        return d.year == today.year - 1 and d.month == 12
-    return d.year == today.year and d.month == today.month - 1

@@ -1,4 +1,4 @@
-"""Tests for worklog.config date parsing and date range helpers."""
+"""Tests for worklog.config date parsing."""
 
 import unittest
 from datetime import date, timedelta
@@ -91,63 +91,9 @@ class TestParseDateInput(unittest.TestCase):
         self.assertEqual(result, self.today)
 
     def test_invalid_input_returns_today(self):
-        # Invalid input should print a warning and return today
         with patch('builtins.print'):
             result = self._parse("notadate")
         self.assertEqual(result, self.today)
-
-
-class TestDateRangeHelpers(unittest.TestCase):
-    """Tests for is_this_week, is_last_week, is_this_month, is_last_month."""
-
-    def setUp(self):
-        # Patch date.today() to return a fixed date: Thursday 2026-03-12
-        self.today = date(2026, 3, 12)
-        self.patcher = patch('worklog.config.date')
-        self.mock_date = self.patcher.start()
-        self.mock_date.today.return_value = self.today
-        self.mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-
-    def tearDown(self):
-        self.patcher.stop()
-
-    def test_is_this_week_monday(self):
-        monday = date(2026, 3, 9)
-        self.assertTrue(config.is_this_week(monday))
-
-    def test_is_this_week_sunday(self):
-        sunday = date(2026, 3, 15)
-        self.assertTrue(config.is_this_week(sunday))
-
-    def test_is_this_week_outside(self):
-        last_sunday = date(2026, 3, 8)
-        self.assertFalse(config.is_this_week(last_sunday))
-
-    def test_is_last_week(self):
-        last_monday = date(2026, 3, 2)
-        self.assertTrue(config.is_last_week(last_monday))
-        last_sunday = date(2026, 3, 8)
-        self.assertTrue(config.is_last_week(last_sunday))
-
-    def test_is_last_week_outside(self):
-        this_monday = date(2026, 3, 9)
-        self.assertFalse(config.is_last_week(this_monday))
-
-    def test_is_this_month(self):
-        self.assertTrue(config.is_this_month(date(2026, 3, 1)))
-        self.assertTrue(config.is_this_month(date(2026, 3, 31)))
-        self.assertFalse(config.is_this_month(date(2026, 2, 28)))
-
-    def test_is_last_month(self):
-        self.assertTrue(config.is_last_month(date(2026, 2, 1)))
-        self.assertFalse(config.is_last_month(date(2026, 3, 1)))
-
-    def test_is_last_month_january(self):
-        # When today is Jan, last month is December of previous year
-        jan = date(2026, 1, 15)
-        self.mock_date.today.return_value = jan
-        self.assertTrue(config.is_last_month(date(2025, 12, 15)))
-        self.assertFalse(config.is_last_month(date(2026, 1, 10)))
 
 
 if __name__ == '__main__':

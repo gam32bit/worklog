@@ -9,33 +9,7 @@ from datetime import date
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from worklog.parser import ParsedLog, parse_file, mark_action_reviewed
-
-
-SAMPLE_FRONTMATTER = """\
----
-date: 2026-03-10
-project: MyProject
-contacts: [Alice, Bob]
-title: Sprint planning
----
-"""
-
-SAMPLE_CONTENT = """\
-Some notes here.
-
-## Next Steps
-- Follow up with Alice
-- [ ] Review PR #42
-- [x] Send email to Bob
-- Write tests
-  continuation line here
-
-## Session Actions
-- Reviewed PRs
-- Had standup
-  with the team
-"""
+from worklog.parser import ParsedLog, parse_file, find_next_steps, mark_item
 
 
 class TestParsedLogProperties(unittest.TestCase):
@@ -45,7 +19,7 @@ class TestParsedLogProperties(unittest.TestCase):
         return ParsedLog(filepath=Path("/fake/path.md"), frontmatter=fm, content=content)
 
     def test_date_from_frontmatter_date_object(self):
-        log = self._make_log("date: 2026-03-10\nproject: X\ncontacts: []", "")
+        log = self._make_log("date: 2026-03-10\nproject: X", "")
         self.assertEqual(log.date, "2026-03-10")
 
     def test_date_missing(self):
@@ -68,195 +42,132 @@ class TestParsedLogProperties(unittest.TestCase):
         log = ParsedLog(filepath=Path("/fake/path.md"), frontmatter={}, content="")
         self.assertEqual(log.project, "")
 
-    def test_contacts_list(self):
-        log = self._make_log("contacts: [Alice, Bob]", "")
-        self.assertEqual(log.contacts, ["Alice", "Bob"])
-
-    def test_contacts_string(self):
-        log = ParsedLog(filepath=Path("/fake/path.md"), frontmatter={"contacts": "Alice, Bob"}, content="")
-        self.assertEqual(log.contacts, ["Alice", "Bob"])
-
-    def test_contacts_empty(self):
-        log = ParsedLog(filepath=Path("/fake/path.md"), frontmatter={}, content="")
-        self.assertEqual(log.contacts, [])
-
     def test_title_from_frontmatter(self):
         log = self._make_log("title: Sprint planning", "")
         self.assertEqual(log.title, "Sprint planning")
 
-    def test_title_from_heading(self):
-        log = ParsedLog(filepath=Path("/fake/path.md"), frontmatter={}, content="# My Heading\nsome content")
-        self.assertEqual(log.title, "My Heading")
-
-    def test_title_empty(self):
-        log = ParsedLog(filepath=Path("/fake/path.md"), frontmatter={}, content="no heading here")
+    def test_title_missing(self):
+        log = ParsedLog(filepath=Path("/fake/path.md"), frontmatter={}, content="")
         self.assertEqual(log.title, "")
 
+    def test_summary_from_frontmatter(self):
+        log = self._make_log("summary: Covered Q2 roadmap", "")
+        self.assertEqual(log.summary, "Covered Q2 roadmap")
 
-class TestExtractActionItems(unittest.TestCase):
-    def _make_log(self, content):
-        return ParsedLog(filepath=Path("/fake/path.md"), frontmatter={}, content=content)
-
-    def test_basic_items(self):
-        log = self._make_log("## Next Steps\n- Do this\n- Do that\n")
-        items = log.extract_action_items()
-        self.assertEqual(items, ["Do this", "Do that"])
-
-    def test_skips_empty_bullets(self):
-        log = self._make_log("## Next Steps\n- \n- Real item\n")
-        items = log.extract_action_items()
-        self.assertEqual(items, ["Real item"])
-
-    def test_skips_reviewed_by_default(self):
-        log = self._make_log("## Next Steps\n- [x] Done item\n- Pending item\n")
-        items = log.extract_action_items()
-        self.assertEqual(items, ["Pending item"])
-
-    def test_includes_reviewed_with_flag(self):
-        log = self._make_log("## Next Steps\n- [x] Done item\n- Pending item\n")
-        items = log.extract_action_items(include_reviewed=True)
-        self.assertIn("[done] Done item", items)
-        self.assertIn("Pending item", items)
-
-    def test_strips_unchecked_checkbox(self):
-        log = self._make_log("## Next Steps\n- [ ] Unchecked item\n")
-        items = log.extract_action_items()
-        self.assertEqual(items, ["Unchecked item"])
-
-    def test_action_items_header(self):
-        log = self._make_log("## Action Items\n- Task one\n")
-        items = log.extract_action_items()
-        self.assertEqual(items, ["Task one"])
-
-    def test_actions_header(self):
-        log = self._make_log("## Actions\n- Task one\n")
-        items = log.extract_action_items()
-        self.assertEqual(items, ["Task one"])
-
-    def test_todo_header(self):
-        log = self._make_log("## Todo\n- Task one\n")
-        items = log.extract_action_items()
-        self.assertEqual(items, ["Task one"])
-
-    def test_tasks_header(self):
-        log = self._make_log("## Tasks\n- Task one\n")
-        items = log.extract_action_items()
-        self.assertEqual(items, ["Task one"])
-
-    def test_stops_at_next_heading(self):
-        log = self._make_log("## Next Steps\n- Item one\n## Session Actions\n- Not an action\n")
-        items = log.extract_action_items()
-        self.assertEqual(items, ["Item one"])
-
-    def test_continuation_lines(self):
-        log = self._make_log("## Next Steps\n- Main item\n  continuation text\n- Another item\n")
-        items = log.extract_action_items()
-        self.assertEqual(items[0], "Main item continuation text")
-        self.assertEqual(items[1], "Another item")
-
-    def test_tab_continuation(self):
-        log = self._make_log("## Next Steps\n- Main item\n\tcontinuation\n")
-        items = log.extract_action_items()
-        self.assertEqual(items[0], "Main item continuation")
-
-    def test_no_action_section(self):
-        log = self._make_log("Just some notes.\nNo action section here.\n")
-        items = log.extract_action_items()
-        self.assertEqual(items, [])
+    def test_summary_missing(self):
+        log = ParsedLog(filepath=Path("/fake/path.md"), frontmatter={}, content="")
+        self.assertEqual(log.summary, "")
 
 
-class TestExtractSessionActions(unittest.TestCase):
-    def _make_log(self, content):
-        return ParsedLog(filepath=Path("/fake/path.md"), frontmatter={}, content=content)
-
-    def test_basic_session_actions(self):
-        log = self._make_log("## Session Actions\n- Did this\n- Did that\n")
-        items = log.extract_session_actions()
-        self.assertEqual(items, ["Did this", "Did that"])
-
-    def test_continuation_lines(self):
-        log = self._make_log("## Session Actions\n- Had meeting\n  with the team\n- Wrote code\n")
-        items = log.extract_session_actions()
-        self.assertEqual(items[0], "Had meeting with the team")
-        self.assertEqual(items[1], "Wrote code")
-
-    def test_stops_at_next_heading(self):
-        log = self._make_log("## Session Actions\n- Action here\n## Next Steps\n- Not session\n")
-        items = log.extract_session_actions()
-        self.assertEqual(items, ["Action here"])
-
-    def test_no_session_section(self):
-        log = self._make_log("## Next Steps\n- Item\n")
-        items = log.extract_session_actions()
-        self.assertEqual(items, [])
-
-    def test_skips_empty_bullets(self):
-        log = self._make_log("## Session Actions\n- \n- Real action\n")
-        items = log.extract_session_actions()
-        self.assertEqual(items, ["Real action"])
-
-
-class TestMarkActionReviewed(unittest.TestCase):
+class TestFindNextSteps(unittest.TestCase):
     def _write_temp(self, content):
         f = tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding='utf-8')
         f.write(content)
         f.close()
         return Path(f.name)
 
+    def _make_log(self, filepath):
+        return ParsedLog(filepath=filepath, frontmatter={}, content="")
+
     def tearDown(self):
-        # Cleanup is handled per-test with try/finally or just leave it to OS
         pass
 
-    def test_marks_plain_item(self):
-        path = self._write_temp("## Next Steps\n- Do the thing\n- Other item\n")
+    def test_finds_unprocessed_lines(self):
+        path = self._write_temp("---\ndate: 2026-03-10\n---\n\n>> Follow up with Alice\n>> Review PR\n")
         try:
-            result = mark_action_reviewed(path, "Do the thing")
-            self.assertTrue(result)
-            text = path.read_text()
-            self.assertIn("- [x] Do the thing", text)
-            self.assertIn("- Other item", text)
+            log = self._make_log(path)
+            items = find_next_steps([log])
+            texts = [t for _, _, t in items]
+            self.assertIn("Follow up with Alice", texts)
+            self.assertIn("Review PR", texts)
         finally:
             os.unlink(path)
 
-    def test_marks_unchecked_checkbox_item(self):
-        path = self._write_temp("## Next Steps\n- [ ] Do the thing\n")
+    def test_ignores_taskwarrior_marked(self):
+        path = self._write_temp(">> Pending task\n>>t Added to taskwarrior\n>>r Reviewed item\n")
         try:
-            result = mark_action_reviewed(path, "Do the thing")
-            self.assertTrue(result)
-            text = path.read_text()
-            self.assertIn("- [x] Do the thing", text)
+            log = self._make_log(path)
+            items = find_next_steps([log])
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0][2], "Pending task")
         finally:
             os.unlink(path)
 
-    def test_returns_false_if_not_found(self):
-        path = self._write_temp("## Next Steps\n- Something else\n")
+    def test_returns_correct_line_number(self):
+        path = self._write_temp("line zero\nline one\n>> Next step here\nline three\n")
         try:
-            result = mark_action_reviewed(path, "Nonexistent item")
-            self.assertFalse(result)
+            log = self._make_log(path)
+            items = find_next_steps([log])
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0][1], 2)  # 0-based line index
+            self.assertEqual(items[0][2], "Next step here")
         finally:
             os.unlink(path)
 
-    def test_only_modifies_inside_action_section(self):
-        path = self._write_temp("## Session Actions\n- Do the thing\n## Next Steps\n- Do the thing\n")
+    def test_empty_logs_returns_empty(self):
+        items = find_next_steps([])
+        self.assertEqual(items, [])
+
+    def test_no_next_steps_returns_empty(self):
+        path = self._write_temp("Just some notes.\n>>t Already done.\n>>r Already reviewed.\n")
         try:
-            result = mark_action_reviewed(path, "Do the thing")
-            self.assertTrue(result)
-            text = path.read_text()
-            # Only the one in Next Steps should be marked
-            lines = text.splitlines()
-            session_idx = lines.index("## Session Actions")
-            next_idx = lines.index("## Next Steps")
-            # Line after Session Actions should still be plain
-            self.assertEqual(lines[session_idx + 1], "- Do the thing")
-            # Line after Next Steps should be marked
-            self.assertEqual(lines[next_idx + 1], "- [x] Do the thing")
+            log = self._make_log(path)
+            items = find_next_steps([log])
+            self.assertEqual(items, [])
+        finally:
+            os.unlink(path)
+
+
+class TestMarkItem(unittest.TestCase):
+    def _write_temp(self, content):
+        f = tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding='utf-8')
+        f.write(content)
+        f.close()
+        return Path(f.name)
+
+    def test_mark_taskwarrior(self):
+        path = self._write_temp("Some notes\n>> Do this thing\nMore notes\n")
+        try:
+            mark_item(path, 1, "t")
+            lines = path.read_text().splitlines()
+            self.assertEqual(lines[1], ">>t Do this thing")
+        finally:
+            os.unlink(path)
+
+    def test_mark_reviewed(self):
+        path = self._write_temp(">> Item one\n>> Item two\n")
+        try:
+            mark_item(path, 0, "r")
+            lines = path.read_text().splitlines()
+            self.assertEqual(lines[0], ">>r Item one")
+            self.assertEqual(lines[1], ">> Item two")
+        finally:
+            os.unlink(path)
+
+    def test_only_modifies_target_line(self):
+        path = self._write_temp(">> First\n>> Second\n>> Third\n")
+        try:
+            mark_item(path, 1, "r")
+            lines = path.read_text().splitlines()
+            self.assertEqual(lines[0], ">> First")
+            self.assertEqual(lines[1], ">>r Second")
+            self.assertEqual(lines[2], ">> Third")
+        finally:
+            os.unlink(path)
+
+    def test_noop_if_line_not_next_step(self):
+        original = "plain line\nanother line\n"
+        path = self._write_temp(original)
+        try:
+            mark_item(path, 0, "r")
+            self.assertEqual(path.read_text(), original)
         finally:
             os.unlink(path)
 
 
 class TestParseFile(unittest.TestCase):
     def test_parse_file_with_frontmatter(self):
-        content = "---\ndate: 2026-03-10\nproject: Test\ncontacts: [Alice]\ntitle: My Log\n---\n\nSome content here.\n"
+        content = "---\ndate: 2026-03-10\nproject: Test\ntitle: My Log\nsummary: A summary\n---\n\nSome content here.\n"
         with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding='utf-8') as f:
             f.write(content)
             path = Path(f.name)
@@ -264,8 +175,8 @@ class TestParseFile(unittest.TestCase):
             log = parse_file(path)
             self.assertIsNotNone(log)
             self.assertEqual(log.project, "Test")
-            self.assertEqual(log.contacts, ["Alice"])
             self.assertEqual(log.title, "My Log")
+            self.assertEqual(log.summary, "A summary")
             self.assertIn("Some content here.", log.content)
         finally:
             os.unlink(path)
