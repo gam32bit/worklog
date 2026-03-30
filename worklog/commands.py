@@ -4,231 +4,225 @@ Command implementations for work log.
 
 import subprocess
 from datetime import date
-from . import config, templates, ui, io as log_io, parser, index as log_index
+from . import config, templates, ui, io as log_io, parser
 
 
 def get_recent_projects(limit: int = 5) -> list[str]:
-    """Get recently used project names using the index cache."""
-    metadata = log_index.get_all_metadata()
-    # Sort by date descending so most recent first
-    metadata.sort(key=lambda m: m.get("date") or "", reverse=True)
+    """Scan last ~20 log files by filename sort, extract project from frontmatter, dedupe."""
+    all_logs = log_io.find_all_logs()
+    recent_files = all_logs[:20]
     seen = set()
     result = []
-    for meta in metadata:
-        project = meta.get("project") or ""
-        if project and project not in seen:
-            seen.add(project)
-            result.append(project)
+    for filepath in recent_files:
+        parsed = parser.parse_file(filepath)
+        if parsed and parsed.project and parsed.project not in seen:
+            seen.add(parsed.project)
+            result.append(parsed.project)
             if len(result) >= limit:
                 break
     return result
 
 
-def get_recent_contacts(limit: int = 5) -> list[str]:
-    """Get recently used contact names using the index cache."""
-    metadata = log_index.get_all_metadata()
-    metadata.sort(key=lambda m: m.get("date") or "", reverse=True)
-    seen = set()
-    result = []
-    for meta in metadata:
-        for contact in meta.get("contacts") or []:
-            if contact and contact not in seen:
-                seen.add(contact)
-                result.append(contact)
-                if len(result) >= limit:
-                    return result
-    return result
+def create_project():
+    """Create a new project wiki file with interactive prompts, then optionally add tasks."""
+    # 1. Project name (required)
+    while True:
+        name = input("Project name: ").strip()
+        if name:
+            break
+        print("Project name is required.")
+
+    # 2. Metadata fields
+    status_input = input("Status [not-started]: ").strip()
+    status = status_input or "not-started"
+
+    priority_input = input("Priority (h/m/l) [m]: ").strip().lower()
+    priority = priority_input if priority_input in ("h", "m", "l") else "m"
+
+    deadline_input = input("Deadline (Enter to skip): ").strip()
+    deadline = _parse_due_date(deadline_input) or ""
+
+    effort = input("Effort (Enter to skip, e.g. '2 days'): ").strip()
+    link = input("Link (Enter to skip): ").strip()
+
+    # 3. Create wiki file
+    wiki_dir = config.WIKI_DIR
+    slug = log_io.slugify(name)
+    wiki_path = wiki_dir / f"{slug}.wiki"
+
+    content = templates.project_template(name, status, priority, deadline, effort, link)
+    log_io.write_file(wiki_path, content)
+
+    # 4. Add to index.wiki under == Projects ==
+    index_entry = f"* [[{slug}]]"
+    log_io.append_to_wiki(wiki_dir, "index", "== Projects ==", index_entry)
+
+    print(f"\nProject created: {wiki_path}")
+
+    # 5. Optionally add tasks
+    add_tasks = input("\nAdd tasks? (y/n): ").strip().lower()
+    if add_tasks != "y":
+        return
+
+    print("Enter task descriptions one at a time. Leave blank to finish.\n")
+    while True:
+        description = input("Task: ").strip()
+        if not description:
+            break
+
+        project_input = input(f"  Project [{name}]: ").strip()
+        task_project = project_input if project_input else name
+
+        priority_prompt = f"  Priority [{priority}]: " if priority else "  Priority (h/m/l, Enter to skip): "
+        priority_input = input(priority_prompt).strip().lower()
+        task_priority = priority_input if priority_input in ("h", "m", "l") else priority
+
+        deadline_prompt = f"  Due date [{deadline}]: " if deadline else "  Due date (Enter to skip): "
+        deadline_input = input(deadline_prompt).strip()
+        task_due = _parse_due_date(deadline_input) if deadline_input else deadline
+
+        cmd = ["task", "add", description]
+        if task_project:
+            cmd.append(f"project:{task_project}")
+        if task_due:
+            cmd.append(f"due:{task_due}")
+        if task_priority in ("h", "m", "l"):
+            cmd.append(f"priority:{task_priority.upper()}")
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            output = result.stdout.strip() or result.stderr.strip()
+            print(f"  Added: {output}")
+        except FileNotFoundError:
+            print("  Error: 'task' command not found. Is Taskwarrior installed?")
 
 
-def create_log(args: list[str] = None):
-    """Create a new log with prompts for date, project, and contacts."""
-    # Prompt for date
-    date_input = input("Date (Enter for today, or type date/day): ").strip()
+def create_log():
+    """Create a new log with interactive prompts, editor session, and wiki index writes."""
+    # 1. Prompt for date
+    date_input = input("Date (Enter for today): ").strip()
     log_date = config.parse_date_input(date_input)
     print(f"Log date: {log_date.strftime('%A, %B %d, %Y')}")
 
-    # Prompt for project
+    # 2. Prompt for project
     recent_projects = get_recent_projects(5)
     project = ui.select_from_recent(recent_projects, "Project:", allow_new=True) or ""
 
-    # Prompt for contacts
-    recent_contacts = get_recent_contacts(5)
-    contacts = ui.select_multiple_from_recent(recent_contacts, "Contacts:")
+    # 3. Prompt for title
+    title = input("\nTitle: ").strip()
 
-    # Prompt for title
-    title = input("\nTitle (Enter to skip): ").strip()
-
-    # Create file path
-    filepath = config.log_path(log_date)
+    # 4. Create file with template and open in editor
+    slug = log_io.slugify(title) if title else ""
+    filepath = config.log_path(log_date, slug)
     filepath = log_io.generate_unique_filename(filepath)
 
-    # Generate content and write
-    content = templates.log_template(log_date, project, contacts, title)
+    content = templates.log_template(log_date, project, title)
     content = content.replace("{BODY}", "")
     log_io.write_file(filepath, content)
 
-    # Open in editor
     ui.open_in_editor(filepath)
+
+    # 5. Cat log content to terminal
+    print(filepath.read_text(encoding="utf-8"))
+
+    # 6. Prompt for summary
+    summary = input("Summary: ").strip()
+
+    # 7. Write summary into frontmatter
+    if summary:
+        text = filepath.read_text(encoding="utf-8")
+        text = text.replace("summary:", f"summary: {summary}", 1)
+        filepath.write_text(text, encoding="utf-8")
+
+    # 8. (File was already created with slug in name — no rename needed)
+
+    # 9. Update wiki index files
+    _update_wiki(filepath, log_date, project, title, summary)
+
     print(f"\nLog saved: {filepath}")
 
 
-def create_quick_log(note: str):
+def create_quick_log(note: str, project: str = ""):
     """Create a log immediately from a note string — no prompts, no editor."""
     log_date = date.today()
-    title = note[:40] if len(note) > 40 else note
-
-    filepath = config.log_path(log_date)
+    slug = log_io.slugify(note)
+    filepath = config.log_path(log_date, slug)
     filepath = log_io.generate_unique_filename(filepath)
 
-    content = templates.log_template(log_date, "", [], title)
-    content = content.replace("\n## Session Actions\n-\n", f"\n## Session Actions\n- {note}\n", 1)
-    content = content.replace("{BODY}", "")
+    content = templates.log_template(log_date, project, note)
+    content = content.replace("{BODY}", note)
 
     log_io.write_file(filepath, content)
+    _update_wiki(filepath, log_date, project, note, "")
+
     print(f"Log saved: {filepath}")
 
 
-def _apply_date_filters(logs, args):
-    """Parse date filter tokens from args and return (filtered_logs, used_filter, remaining_args)."""
-    filter_thisweek = False
-    filter_lastweek = False
-    filter_thismonth = False
-    filter_lastmonth = False
-    remaining = []
+def triage_next_steps():
+    """Scan all log files for unprocessed '^>> ' lines and triage them one at a time."""
+    all_log_paths = log_io.find_all_logs()
+    all_logs = []
+    for fp in all_log_paths:
+        parsed = parser.parse_file(fp)
+        if parsed:
+            all_logs.append(parsed)
 
-    for arg in args:
-        arg_lower = arg.lower()
-        if arg_lower == "thisweek":
-            filter_thisweek = True
-        elif arg_lower == "lastweek":
-            filter_lastweek = True
-        elif arg_lower == "thismonth":
-            filter_thismonth = True
-        elif arg_lower == "lastmonth":
-            filter_lastmonth = True
-        else:
-            remaining.append(arg)
+    items = parser.find_next_steps(all_logs)
 
-    used_date_filter = filter_thisweek or filter_lastweek or filter_thismonth or filter_lastmonth
-
-    if filter_thisweek:
-        logs = [log for log in logs if log.date_obj and config.is_this_week(log.date_obj)]
-    elif filter_lastweek:
-        logs = [log for log in logs if log.date_obj and config.is_last_week(log.date_obj)]
-    elif filter_thismonth:
-        logs = [log for log in logs if log.date_obj and config.is_this_month(log.date_obj)]
-    elif filter_lastmonth:
-        logs = [log for log in logs if log.date_obj and config.is_last_month(log.date_obj)]
-
-    return logs, used_date_filter, remaining
-
-
-def list_actions(args: list[str]):
-    """Backward-compatible alias for list_next_steps."""
-    list_next_steps(args)
-
-
-def list_next_steps(args: list[str]):
-    """List next-step action items from logs, with interactive review options."""
-    logs = parser.parse_all_logs()
-
-    if not logs:
-        print("No logs found.")
+    if not items:
+        print("No unprocessed next steps found.")
         return
 
-    # Sort by date (most recent first)
-    logs.sort(key=lambda log: log.date_obj or date.min, reverse=True)
+    # Sort by date descending (newest first)
+    items.sort(key=lambda x: x[0].date or "", reverse=True)
 
-    # Parse flags
-    show_all = "--all" in args
-    raw_mode = "--raw" in args
-    remaining_args = [a for a in args if a not in ("--all", "--raw")]
+    total = len(items)
+    i = 0
+    while i < total:
+        log, line_num, text = items[i]
+        project_display = log.project or "(no project)"
+        print(f"\n[{i + 1}/{total}] {project_display} | {log.date} | {log.title}")
+        print(f"  >> {text}")
 
-    # Apply date filters
-    logs, used_date_filter, remaining_args = _apply_date_filters(logs, remaining_args)
+        choice = input("  [t]ask  [r]eviewed  [s]kip  [q]uit > ").strip().lower()
 
-    limit = 10
-    if not used_date_filter:
-        logs = logs[:limit]
-
-    # Collect action items
-    action_data = []  # List of (log, items) tuples; items are (display_text, raw_text, is_reviewed)
-    for log in logs:
-        items = log.extract_action_items(include_reviewed=show_all)
-        if items:
-            # Track which are reviewed for display
-            enriched = []
-            for item in items:
-                is_reviewed = item.startswith('[done] ')
-                raw_text = item[7:] if is_reviewed else item
-                enriched.append((item, raw_text, is_reviewed))
-            action_data.append((log, enriched))
-
-    if not action_data:
-        print("No action items found.")
-        return
-
-    if raw_mode:
-        for log, items in action_data:
-            project_display = log.project if log.project else "(none)"
-            title_display = f" | {log.title}" if log.title else ""
-            for display_text, raw_text, _ in items:
-                print(f"{log.date} | {project_display}{title_display} | {display_text}")
-        return
-
-    # Numbered display
-    item_number = 0
-    numbered_items = []  # List of (log, raw_text, is_reviewed)
-
-    print()
-    for log, items in action_data:
-        project_display = log.project if log.project else "(none)"
-        title_display = f" | {log.title}" if log.title else ""
-        print(f"=== {log.date} | {project_display}{title_display} ===")
-
-        for display_text, raw_text, is_reviewed in items:
-            item_number += 1
-            numbered_items.append((log, raw_text, is_reviewed))
-            marker = " [done]" if is_reviewed else ""
-            print(f"  {item_number}.{marker} {raw_text}")
-
-        print()
-
-    # Interactive prompt loop
-    while True:
-        choice = input("Enter number for action, or press Enter to exit: ").strip()
-        if not choice:
+        if choice == 'q':
             break
-        if not choice.isdigit():
-            continue
-        idx = int(choice) - 1
-        if not (0 <= idx < len(numbered_items)):
-            print("Invalid number.")
-            continue
+        elif choice == 'r':
+            parser.mark_item(log.filepath, line_num, "r")
+            print("  Marked reviewed.")
+            i += 1
+        elif choice == 't':
+            _add_to_taskwarrior(text, log)
+            parser.mark_item(log.filepath, line_num, "t")
+            i += 1
+        else:
+            # 's' or anything else = skip
+            i += 1
 
-        log, raw_text, is_reviewed = numbered_items[idx]
 
-        if is_reviewed:
-            print(f"  Item already marked reviewed: {raw_text}")
-            continue
+def _update_wiki(filepath, log_date: date, project: str, title: str, summary: str):
+    """Write index entries to log.wiki, {project}.wiki, and meetings.wiki."""
+    wiki_dir = config.WIKI_DIR
+    slug = filepath.stem
+    date_str = str(log_date)
 
-        action = input("  [o] Open source log  [r] Mark reviewed  [t] Add to Taskwarrior  [Enter] Cancel\n  > ").strip().lower()
+    label = title
+    if summary:
+        label = f"{title} - {summary}" if title else summary
 
-        if action == 'o':
-            ui.open_in_editor(log.filepath)
+    # log.wiki entry includes (project) parenthetical when project is set
+    if project:
+        log_entry = f"* [[{slug}|{date_str}]] ({project}) {label}"
+    else:
+        log_entry = f"* [[{slug}|{date_str}]] {label}"
 
-        elif action == 'r':
-            ok = parser.mark_action_reviewed(log.filepath, raw_text)
-            if ok:
-                print(f"  Marked reviewed: {raw_text}")
-                numbered_items[idx] = (log, raw_text, True)
-            else:
-                print(f"  Could not find item in source file.")
+    log_io.prepend_to_wiki(wiki_dir, "timeline", log_entry)
 
-        elif action == 't':
-            _add_to_taskwarrior(raw_text, log)
-
-        # else: cancel / empty — do nothing
+    if project:
+        project_entry = f"* [[{slug}|{date_str}]] {label}"
+        project_page = project.lower()
+        log_io.append_to_wiki(wiki_dir, project_page, "== Log ==", project_entry)
 
 
 def _parse_due_date(due_input: str) -> str | None:
@@ -240,7 +234,10 @@ def _parse_due_date(due_input: str) -> str | None:
 
 def _add_to_taskwarrior(description: str, log=None):
     """Prompt for Taskwarrior metadata and add the task."""
-    project = input("  Project (Enter to skip): ").strip()
+    default_project = log.project if log else ""
+    project_prompt = f"  Project [{default_project}]: " if default_project else "  Project (Enter to skip): "
+    project_input = input(project_prompt).strip()
+    project = project_input if project_input else default_project
     due_input = input("  Due date (Enter to skip, e.g. 2026-03-10 or eow): ").strip()
     priority = input("  Priority (h/m/l, Enter to skip): ").strip().lower()
 
@@ -259,50 +256,3 @@ def _add_to_taskwarrior(description: str, log=None):
         print(f"  Added: {output}")
     except FileNotFoundError:
         print("  Error: 'task' command not found. Is Taskwarrior installed?")
-
-    # Optionally mark reviewed after adding to Taskwarrior
-    if log:
-        mark = input("  Also mark reviewed? [y/N]: ").strip().lower()
-        if mark == 'y':
-            ok = parser.mark_action_reviewed(log.filepath, description)
-            if ok:
-                print(f"  Marked reviewed: {description}")
-
-
-def list_session_actions(args: list[str]):
-    """List session actions from logs (retrospective record of what was done)."""
-    logs = parser.parse_all_logs()
-
-    if not logs:
-        print("No logs found.")
-        return
-
-    # Sort by date (most recent first)
-    logs.sort(key=lambda log: log.date_obj or date.min, reverse=True)
-
-    # Apply date filters
-    logs, used_date_filter, _ = _apply_date_filters(logs, args)
-
-    limit = 10
-    if not used_date_filter:
-        logs = logs[:limit]
-
-    # Collect session actions
-    action_data = []
-    for log in logs:
-        items = log.extract_session_actions()
-        if items:
-            action_data.append((log, items))
-
-    if not action_data:
-        print("No session actions found.")
-        return
-
-    print()
-    for log, items in action_data:
-        project_display = log.project if log.project else "(none)"
-        title_display = f" | {log.title}" if log.title else ""
-        print(f"=== {log.date} | {project_display}{title_display} ===")
-        for item in items:
-            print(f"  - {item}")
-        print()
